@@ -1,0 +1,197 @@
+import { API_BASE_URL } from '@/core/config/env'
+import { ApiHttpError, buildApiUrl, fetchJson } from '@/services/apiClient'
+import type { Provider, V2Details, V2SearchResult, V2StreamResult } from '@/types/v2'
+
+export { ApiHttpError }
+
+// ─── Cache TTLs ───────────────────────────────────────────────────────────────
+const SEARCH_TTL_MS = 2 * 60 * 1000
+const DETAIL_TTL_MS = 10 * 60 * 1000
+const STREAM_TTL_MS = 0 // streams are always fresh (no cache)
+
+// ─── Generic request helper ───────────────────────────────────────────────────
+async function request<T>(
+  path: string,
+  params?: Record<string, string>,
+  options?: {
+    ttlMs?: number
+    skipCache?: boolean
+    persist?: boolean
+    retries?: number
+    signal?: AbortSignal
+  },
+): Promise<T | null> {
+  const url = buildApiUrl(path, params)
+  try {
+    const data = await fetchJson<{ ok?: boolean; success?: boolean } & T>(url, {
+      ttlMs: options?.ttlMs ?? 60_000,
+      skipCache: options?.skipCache,
+      persist: options?.persist,
+      retries: options?.retries ?? 2,
+      signal: options?.signal,
+    })
+    if (data.ok === false || data.success === false) return null
+    return data as T
+  } catch (err) {
+    if (err instanceof ApiHttpError) throw err
+    // Propagate abort errors so callers can distinguish cancellation
+    if (err instanceof DOMException && err.name === 'AbortError') throw err
+    return null
+  }
+}
+
+// ─── V2 Search ────────────────────────────────────────────────────────────────
+export async function searchV2(
+  query: string,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<V2SearchResult[]> {
+  try {
+    const data = await request<{ success: boolean; count: number; results: V2SearchResult[] }>(
+      '/api/v2/search',
+      { q: query },
+      { ttlMs: SEARCH_TTL_MS, skipCache: options?.force, signal: options?.signal },
+    )
+    return data?.results ?? []
+  } catch (err) {
+    if (err instanceof ApiHttpError) throw err
+    // Silently ignore aborts — the caller's cleanup handler fired
+    if (err instanceof DOMException && err.name === 'AbortError') return []
+    return []
+  }
+}
+
+// ─── V2 Details ───────────────────────────────────────────────────────────────
+export async function getDetailsV2(
+  provider: Provider,
+  id: string,
+  title?: string,
+  year?: string,
+  sources?: string,
+  options?: { force?: boolean },
+): Promise<V2Details | null> {
+  try {
+    const params: Record<string, string> = {}
+    if (title) params.title = title
+    if (year) params.year = year
+    if (sources) params.sources = sources
+    const data = await request<{ success: boolean; results: V2Details }>(
+      `/api/v2/details/${provider}/${id}`,
+      params,
+      { ttlMs: DETAIL_TTL_MS, skipCache: options?.force },
+    )
+    return data?.results ?? null
+  } catch (err) {
+    if (err instanceof ApiHttpError) throw err
+    return null
+  }
+}
+
+// ─── V2 Stream ────────────────────────────────────────────────────────────────
+export async function getStreamV2(
+  provider: Provider,
+  id: string,
+  sources?: { provider: string; id: string }[],
+  dub?: string,
+): Promise<V2StreamResult> {
+  try {
+    const params: Record<string, string> = {}
+    if (sources && sources.length > 0) {
+      params.sources = sources.map((s) => `${s.provider}:${s.id}`).join(',')
+    }
+    if (dub) {
+      params.dub = dub
+    }
+    const data = await request<V2StreamResult>(
+      `/api/v2/stream/${provider}/${id}`,
+      params,
+      { ttlMs: STREAM_TTL_MS, skipCache: true, retries: 3 },
+    )
+    return data ?? { success: false, streams: [], subtitles: [] }
+  } catch (err) {
+    if (err instanceof ApiHttpError) throw err
+    return { success: false, streams: [], subtitles: [] }
+  }
+}
+
+// ─── TMDB List Proxies ────────────────────────────────────────────────────────
+export async function getTmdbList(
+  category: string, // trending, popular, top_rated, upcoming, popular_tv, discover
+  params?: Record<string, string>,
+): Promise<V2SearchResult[]> {
+  try {
+    const data = await request<{ success: boolean; results: V2SearchResult[] }>(
+      `/api/v2/tmdb/${category}`,
+      params,
+      { ttlMs: DETAIL_TTL_MS } // Cache lists for 10 minutes
+    )
+    return data?.results ?? []
+  } catch (err) {
+    if (err instanceof ApiHttpError) throw err
+    return []
+  }
+}
+
+// ─── Details By TMDB ID ────────────────────────────────────────────────────────
+export async function getDetailsByTmdbId(
+  tmdbId: string,
+  type: string = 'movie',
+  title?: string,
+  year?: string,
+): Promise<V2Details | null> {
+  try {
+    const params: Record<string, string> = { type }
+    if (title) params.title = title
+    if (year) params.year = year
+
+    const data = await request<{ success: boolean; results: V2Details }>(
+      `/api/v2/details/tmdb/${tmdbId}`,
+      params,
+      { ttlMs: DETAIL_TTL_MS }
+    )
+    return data?.results ?? null
+  } catch (err) {
+    if (err instanceof ApiHttpError) throw err
+    return null
+  }
+}
+
+// ─── Season Episodes V2 ──────────────────────────────────────────────────────
+export async function getSeasonEpisodesV2(
+  tmdbId: string,
+  seasonNumber: number,
+  provider?: string,
+  seriesId?: string,
+  seasonId?: string
+): Promise<any[]> {
+  try {
+    const params: Record<string, string> = {}
+    if (provider) params.provider = provider
+    if (seriesId) params.seriesId = seriesId
+    if (seasonId) params.seasonId = seasonId
+
+    const data = await request<{ success: boolean; results: any[] }>(
+      `/api/v2/tmdb/season/${tmdbId}/${seasonNumber}`,
+      params,
+      { ttlMs: DETAIL_TTL_MS }
+    )
+    return data?.results ?? []
+  } catch (err) {
+    if (err instanceof ApiHttpError) throw err
+    return []
+  }
+}
+
+
+
+
+// ─── Health check ─────────────────────────────────────────────────────────────
+export async function checkHealth(): Promise<boolean> {
+  try {
+    // Works in both modes: '/health' (Vite proxy) or 'https://host/health' (prod)
+    const url = API_BASE_URL ? `${API_BASE_URL}/health` : '/health'
+    const res = await fetch(url)
+    return res.ok
+  } catch {
+    return false
+  }
+}
