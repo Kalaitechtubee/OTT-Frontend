@@ -3,4 +3,5 @@
  *  Set VITE_BACKEND_URL to the full origin in production builds.
  */
 export const API_BASE_URL: string =
-  import.meta.env.VITE_BACKEND_URL ?? ''
+  import.meta.env.DEV ? '' : (import.meta.env.VITE_BACKEND_URL ?? '')
+
