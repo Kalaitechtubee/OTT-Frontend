@@ -1,7 +1,6 @@
 /** Backend base URL — same contract as Flutter BackendService.
- *  Empty string in dev = Vite proxy forwards /api/* to localhost:6000 (no CORS).
- *  Set VITE_BACKEND_URL to the full origin in production builds.
+ *  Point directly to VITE_BACKEND_URL from .env (no Vite proxy).
  */
 export const API_BASE_URL: string =
-  import.meta.env.DEV ? '' : (import.meta.env.VITE_BACKEND_URL ?? '')
+  import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8080'
 
