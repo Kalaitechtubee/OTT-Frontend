@@ -1006,6 +1006,7 @@ export function PlayerPage() {
               className={`h-full w-full bg-black border-none ${statusMessage ? 'invisible' : ''}`}
               allow="autoplay; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
+              sandbox="allow-scripts allow-same-origin allow-forms"
             />
           ) : (
             <video
