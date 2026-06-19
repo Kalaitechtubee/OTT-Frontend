@@ -297,8 +297,21 @@ export function PlayerPage() {
         playContext.provider as Provider,
         playContext.id,
       )
+
+      // Handle transitioning to embed-type streams (e.g. Server 2 Peachify fallback)
+      if (freshResult && freshResult.streamType === 'embed' && freshResult.embedUrl) {
+        console.log('[PlayerPage] Fresh stream is embed-type, transitioning to embed mode:', freshResult.embedUrl)
+        usePlayerStore.setState({
+          streamType: 'embed',
+          embedUrl: freshResult.embedUrl,
+          streamUrl: freshResult.embedUrl,
+          streams: []
+        })
+        return true
+      }
+
       const freshStreams = freshResult.streams
-      if (!freshStreams.length) return false
+      if (!freshStreams || !freshStreams.length) return false
 
       const qualityToUse = targetQuality ?? selectedQuality
       const match =
