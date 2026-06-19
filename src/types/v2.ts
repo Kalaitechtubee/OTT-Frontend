@@ -1,6 +1,6 @@
 // ─── V2 API Types ─────────────────────────────────────────────────────────────
 
-export type Provider = 'net11' | 'net52' | 'tmdb'
+export type Provider = 'net11' | 'net52' | 'tmdb' | 'netmirror' | 'peachify' | string
 
 export interface V2SearchResult {
   id: string
@@ -52,7 +52,7 @@ export interface V2Details {
   tmdbId: number | null
   imdbId?: string | null
   mediaType: 'movie' | 'tv'
-  sources?: { provider: Provider; id: string; languages?: string[] }[]
+  sources?: { provider: Provider; id: string; languages?: string[]; label?: string; streamType?: string }[]
   audioLanguages?: string[]
   seasons?: {
     season_number: number
@@ -85,6 +85,9 @@ export interface V2StreamResult {
   thumbnails?: string | null
   streams: V2Stream[]
   subtitles: V2Subtitle[]
+  /** Set when the stream is an iframe embed (e.g. Peachify Server 2) */
+  streamType?: 'embed' | 'hls' | 'mp4'
+  embedUrl?: string
 }
 
 /** Parse a V2 rating string like "TMDB 7.5" into a number (7.5) */

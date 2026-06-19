@@ -3,7 +3,6 @@ import { persist } from 'zustand/middleware'
 import { getStreamV2 } from '@/services/api'
 import {
   buildDownloadFilename,
-  downloadStreamToFile,
   fetchVideoBlobForDownload,
 } from '@/utils/download'
 import { deleteOfflineVideo, saveOfflineVideo } from '@/utils/offlineStorage'
@@ -170,12 +169,18 @@ export const useDownloadStore = create<DownloadState>()(
               return
             }
 
-            await downloadStreamToFile(fetchUrl, filename, {
-              signal: controller.signal,
-              onProgress,
-              target: 'device',
-              onExpired,
-            })
+            // Direct native browser download via backend proxy
+            const downloadUrl = `${fetchUrl}&download=true&filename=${encodeURIComponent(filename)}`
+            const anchor = document.createElement('a')
+            anchor.href = downloadUrl
+            anchor.download = filename
+            anchor.style.display = 'none'
+            document.body.appendChild(anchor)
+            anchor.click()
+            anchor.remove()
+            
+            // Mark progress as 100% since browser native downloader takes over
+            onProgress(100)
           }
 
           for (let attempt = 0; attempt < 2; attempt++) {
@@ -202,6 +207,7 @@ export const useDownloadStore = create<DownloadState>()(
           })
           return true
         } catch (err) {
+          console.error('[Download] Failed:', err)
           const cancelled =
             err instanceof DOMException && err.name === 'AbortError'
           set({

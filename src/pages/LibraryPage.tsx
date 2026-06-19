@@ -123,7 +123,12 @@ export function LibraryPage() {
             <ul className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {items.map(({ movie, progress, duration, playContext: ctx }) => {
                 const pct = duration > 0 ? (progress / duration) * 100 : 0
-                const detailPath = ctx
+                const detailPath = movie.id && movie.id > 0
+                  ? paths.tmdbDetail(String(movie.id), {
+                      title: movie.title,
+                      type: movie.type,
+                    })
+                  : ctx
                   ? paths.detail(ctx.provider, ctx.id, { title: movie.title })
                   : paths.detail(movie.type, movie.overview || String(movie.id))
                 return (

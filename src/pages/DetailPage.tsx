@@ -167,7 +167,10 @@ export function DetailPage() {
 
   const activeProvider = provider || details?.provider
   const activeId = id || details?.id
-  const hasStreams = !!(activeProvider && activeId && activeProvider !== 'tmdb')
+  const hasStreams = !!(
+    (activeProvider && activeId && activeProvider !== 'tmdb') ||
+    (details && details.sources && details.sources.length > 0)
+  )
 
   // Fetch Details
   useEffect(() => {
@@ -271,7 +274,10 @@ export function DetailPage() {
           streams[0].url,
           streams,
           streams[0].quality,
-          result.subtitles
+          result.subtitles,
+          String(details.tmdbId || details.id),
+          'tv',
+          details.description
         )
         navigate(paths.watch(episodeProvider, episodeId))
       } else {
@@ -312,10 +318,23 @@ export function DetailPage() {
       }
     }
 
-    const expectedSubjectId = dubParam ?? activeId
+    if (targetProvider === 'tmdb' && details.sources && details.sources.length > 0) {
+      targetProvider = details.sources[0].provider
+      targetId = details.sources[0].id
+    }
+
+    const expectedSubjectId = dubParam ?? (activeProvider === 'tmdb' ? targetId : activeId)
 
     try {
       const result = await getStreamV2(targetProvider as Provider, targetId, details.sources, dubParam)
+
+      // ── Embed / iframe stream (e.g. Peachify Server 2) ──────────────────────
+      if (result.streamType === 'embed' && result.embedUrl) {
+        // Open the embed in a new tab (Peachify runs in its own iframe player)
+        window.open(result.embedUrl, '_blank', 'noopener,noreferrer')
+        return
+      }
+
       const streams = result.streams
       if (!streams.length) {
         setFeedback('No playback streams available for this title.')
@@ -323,7 +342,8 @@ export function DetailPage() {
       }
 
       // Validate stream subject matches selected language/source
-      if (expectedSubjectId && result.subjectId && result.subjectId !== expectedSubjectId) {
+      if (expectedSubjectId && result.subjectId && result.subjectId !== expectedSubjectId
+          && targetProvider !== 'peachify') {
         setFeedback(`${selectedLanguage?.language ?? 'Selected language'} stream unavailable for playback.`)
         return
       }
@@ -336,7 +356,10 @@ export function DetailPage() {
           streams[0].url,
           streams,
           streams[0].quality,
-          result.subtitles
+          result.subtitles,
+          String(details.tmdbId || details.id),
+          details.mediaType,
+          details.description
         )
         navigate(paths.watch(targetProvider, targetId))
       } else {
@@ -377,7 +400,24 @@ export function DetailPage() {
       }
     }
 
-    const expectedSubjectId = dubParam ?? activeId
+    if (targetProvider === 'tmdb' && details.sources && details.sources.length > 0) {
+      targetProvider = details.sources[0].provider
+      targetId = details.sources[0].id
+    }
+
+    // Peachify is embed-only and doesn't support downloads. Failover to Netmirror if available.
+    if ((targetProvider === 'peachify' || targetProvider === 'tmdb') && details.sources && details.sources.length > 0) {
+      const alternative = details.sources.find(s => s.provider !== 'peachify')
+      if (alternative) {
+        targetProvider = alternative.provider
+        targetId = alternative.id
+        if (dubParam && !details.sources.find(s => s.id === dubParam && s.provider === targetProvider)) {
+          dubParam = undefined
+        }
+      }
+    }
+
+    const expectedSubjectId = dubParam ?? (activeProvider === 'tmdb' ? targetId : activeId)
 
     try {
       const result = await getStreamV2(targetProvider as Provider, targetId, details.sources, dubParam)
@@ -423,7 +463,10 @@ export function DetailPage() {
         stream.url,
         qualityModal.streams,
         stream.quality,
-        targetSubtitles
+        targetSubtitles,
+        String(details.tmdbId || details.id),
+        details.mediaType,
+        details.description
       )
       navigate(paths.watch(targetContext.provider, targetContext.id))
       return
@@ -446,6 +489,20 @@ export function DetailPage() {
     if (targetContext) {
       targetProvider = targetContext.provider
       targetId = targetContext.id
+    }
+
+    if (targetProvider === 'tmdb' && details.sources && details.sources.length > 0) {
+      targetProvider = details.sources[0].provider
+      targetId = details.sources[0].id
+    }
+
+    // Peachify is embed-only and doesn't support downloads. Failover to Netmirror if available.
+    if ((targetProvider === 'peachify' || targetProvider === 'tmdb') && details.sources && details.sources.length > 0) {
+      const alternative = details.sources.find(s => s.provider !== 'peachify')
+      if (alternative) {
+        targetProvider = alternative.provider
+        targetId = alternative.id
+      }
     }
 
     setFeedback('Starting download...')

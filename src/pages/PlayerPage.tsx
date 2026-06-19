@@ -136,8 +136,31 @@ export function PlayerPage() {
     setStreamQuality,
     stop,
     subtitles: storeSubtitles,
+    tmdbId,
+    mediaType,
+    overview,
   } = usePlayerStore()
+  const items = useHistoryStore((s) => s.items)
   const addOrUpdate = useHistoryStore((s) => s.addOrUpdate)
+
+  // Find matching history item to resume
+  const historyItem = useMemo(() => {
+    return items.find(
+      (item) =>
+        (tmdbId && item.movie.id === Number(tmdbId) && item.movie.type === mediaType) ||
+        (item.playContext?.provider === playContext?.provider &&
+          item.playContext?.id === playContext?.id)
+    )
+  }, [items, tmdbId, mediaType, playContext])
+
+  useEffect(() => {
+    if (historyItem && historyItem.progress > 0) {
+      resumeTimeRef.current = historyItem.progress
+      console.log(`[Player] Found matching history item at progress ${historyItem.progress}s. Will resume there.`)
+    } else {
+      resumeTimeRef.current = 0
+    }
+  }, [historyItem])
 
   /* Persistent selections across quality changes & recovery */
   const selectedAudioLanguageRef = useRef<string | null>(null)
@@ -346,10 +369,10 @@ export function PlayerPage() {
       setProgress(pct)
 
       const historyMovie: Movie = {
-        id: 0,
+        id: Number(tmdbId || 0),
         title: title ?? 'V2 Playback',
-        overview: '',
-        type: 'movie',
+        overview: overview ?? '',
+        type: mediaType ?? 'movie',
         posterPath: poster ?? undefined,
         rating: 0,
         releaseDate: '',
@@ -391,7 +414,7 @@ export function PlayerPage() {
         clearTimeout(recoveryResetTimerRef.current)
       }
     }
-  }, [title, poster, setProgress, addOrUpdate, effectiveStreamUrl])
+  }, [title, poster, setProgress, addOrUpdate, effectiveStreamUrl, tmdbId, mediaType, overview, playContext])
 
   /* ───────────────────────────────────────────────────────────────────────── */
   /* ── HLS.js initialization + Audio / Subtitle track detection ────────── */

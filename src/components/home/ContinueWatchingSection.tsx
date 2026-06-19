@@ -24,7 +24,12 @@ export function ContinueWatchingSection() {
       <div className="no-scrollbar mask-gradient-x scroll-rail-bleed mt-5 flex gap-4 overflow-x-auto py-4 pt-5 pb-6 scroll-smooth">
         {items.map(({ movie, progress, duration, playContext: ctx }) => {
           const pct = duration > 0 ? (progress / duration) * 100 : 0
-          const detailPath = ctx
+          const detailPath = movie.id && movie.id > 0
+            ? paths.tmdbDetail(String(movie.id), {
+                title: movie.title,
+                type: movie.type,
+              })
+            : ctx
             ? paths.detail(ctx.provider, ctx.id, { title: movie.title })
             : paths.detail(movie.type, movie.overview || String(movie.id))
           return (
