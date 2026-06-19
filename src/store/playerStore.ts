@@ -52,6 +52,10 @@ interface PlayerState {
   mediaType: 'movie' | 'tv' | null
   /** Brief overview */
   overview: string | null
+  /** Stream play type: embed, hls, or mp4 */
+  streamType: 'embed' | 'hls' | 'mp4' | null
+  /** Embed URL if streamType is embed */
+  embedUrl: string | null
 
   play: (
     title: string,
@@ -63,7 +67,9 @@ interface PlayerState {
     subtitles?: V2Subtitle[],
     tmdbId?: string | null,
     mediaType?: 'movie' | 'tv' | null,
-    overview?: string | null
+    overview?: string | null,
+    streamType?: 'embed' | 'hls' | 'mp4' | null,
+    embedUrl?: string | null
   ) => void
   setStreamQuality: (streamUrl: string, quality: string, streams?: V2Stream[]) => void
   setProgress: (n: number) => void
@@ -82,8 +88,23 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   tmdbId: null,
   mediaType: null,
   overview: null,
+  streamType: null,
+  embedUrl: null,
 
-  play: (title, poster, context, streamUrl, streams, quality, subtitles = [], tmdbId = null, mediaType = null, overview = null) =>
+  play: (
+    title,
+    poster,
+    context,
+    streamUrl,
+    streams,
+    quality,
+    subtitles = [],
+    tmdbId = null,
+    mediaType = null,
+    overview = null,
+    streamType = null,
+    embedUrl = null
+  ) =>
     set({
       title,
       poster,
@@ -96,6 +117,8 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       tmdbId,
       mediaType,
       overview,
+      streamType,
+      embedUrl,
     }),
 
   setStreamQuality: (streamUrl, quality, streams) =>
@@ -120,5 +143,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       tmdbId: null,
       mediaType: null,
       overview: null,
+      streamType: null,
+      embedUrl: null,
     }),
 }))

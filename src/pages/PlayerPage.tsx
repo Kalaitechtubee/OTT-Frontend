@@ -139,6 +139,8 @@ export function PlayerPage() {
     tmdbId,
     mediaType,
     overview,
+    streamType,
+    embedUrl,
   } = usePlayerStore()
   const items = useHistoryStore((s) => s.items)
   const addOrUpdate = useHistoryStore((s) => s.addOrUpdate)
@@ -415,6 +417,28 @@ export function PlayerPage() {
       }
     }
   }, [title, poster, setProgress, addOrUpdate, effectiveStreamUrl, tmdbId, mediaType, overview, playContext])
+
+  // Track history for embed-type streams
+  useEffect(() => {
+    if (streamType === 'embed' && effectiveStreamUrl && title) {
+      const historyMovie: Movie = {
+        id: Number(tmdbId || 0),
+        title: title ?? 'V2 Playback',
+        overview: overview ?? '',
+        type: mediaType ?? 'movie',
+        posterPath: poster ?? undefined,
+        rating: 0,
+        releaseDate: '',
+      }
+
+      addOrUpdate({
+        movie: historyMovie,
+        progress: 0,
+        duration: 0,
+        playContext: playContext ?? undefined,
+      })
+    }
+  }, [streamType, effectiveStreamUrl, title, tmdbId, mediaType, overview, playContext, addOrUpdate])
 
   /* ───────────────────────────────────────────────────────────────────────── */
   /* ── HLS.js initialization + Audio / Subtitle track detection ────────── */
@@ -892,34 +916,36 @@ export function PlayerPage() {
         )}
 
         {/* ── Settings Bar: Quality + Audio/Subtitle Settings ── */}
-        <div className="flex w-full max-w-6xl items-center justify-end gap-3">
-          {/* Audio/Subtitle track info badges */}
-          {audioTracks.length > 0 && (
-            <div className="hidden items-center gap-1.5 rounded-full border border-white/8 bg-white/[0.03] px-4 py-2 text-[11px] font-bold text-white/70 backdrop-blur-md sm:inline-flex">
-              <span className="text-blue-400">🔊</span>
-              <span>{audioTracks.length} Audio Tracks</span>
-              {subtitleTracks.length > 0 && (
-                <>
-                  <span className="text-white/10">|</span>
-                  <span className="text-emerald-400">CC</span>
-                  <span>{subtitleTracks.length} Subtitles</span>
-                </>
-              )}
-            </div>
-          )}
+        {streamType !== 'embed' && (
+          <div className="flex w-full max-w-6xl items-center justify-end gap-3">
+            {/* Audio/Subtitle track info badges */}
+            {audioTracks.length > 0 && (
+              <div className="hidden items-center gap-1.5 rounded-full border border-white/8 bg-white/[0.03] px-4 py-2 text-[11px] font-bold text-white/70 backdrop-blur-md sm:inline-flex">
+                <span className="text-blue-400">🔊</span>
+                <span>{audioTracks.length} Audio Tracks</span>
+                {subtitleTracks.length > 0 && (
+                  <>
+                    <span className="text-white/10">|</span>
+                    <span className="text-emerald-400">CC</span>
+                    <span>{subtitleTracks.length} Subtitles</span>
+                  </>
+                )}
+              </div>
+            )}
 
-          <PlayerSettingsPanel
-            audioTracks={audioTracks}
-            selectedAudioTrackId={selectedAudioTrackId}
-            onAudioTrackChange={handleAudioTrackChange}
-            subtitleTracks={effectiveSubtitleTracks}
-            selectedSubtitleTrackId={selectedSubtitleTrackId}
-            onSubtitleTrackChange={handleSubtitleTrackChange}
-            qualityOptions={qualityOptions}
-            selectedQuality={selectedQuality}
-            onQualityChange={handleQualityChange}
-          />
-        </div>
+            <PlayerSettingsPanel
+              audioTracks={audioTracks}
+              selectedAudioTrackId={selectedAudioTrackId}
+              onAudioTrackChange={handleAudioTrackChange}
+              subtitleTracks={effectiveSubtitleTracks}
+              selectedSubtitleTrackId={selectedSubtitleTrackId}
+              onSubtitleTrackChange={handleSubtitleTrackChange}
+              qualityOptions={qualityOptions}
+              selectedQuality={selectedQuality}
+              onQualityChange={handleQualityChange}
+            />
+          </div>
+        )}
 
         <div className="relative flex aspect-video max-h-[calc(100dvh-240px)] w-full max-w-6xl overflow-hidden rounded-2xl border border-white/10 bg-[#070709] shadow-[0_0_80px_rgba(229,9,20,0.18)]">
           {statusMessage && (
@@ -961,6 +987,13 @@ export function PlayerPage() {
                 </button>
               </div>
             </div>
+          ) : streamType === 'embed' ? (
+            <iframe
+              src={embedUrl || effectiveStreamUrl}
+              className={`h-full w-full bg-black border-none ${statusMessage ? 'invisible' : ''}`}
+              allow="autoplay; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
           ) : (
             <video
               ref={videoRef}

@@ -252,6 +252,28 @@ export function DetailPage() {
     setFeedback(null)
     try {
       const result = await getStreamV2(episodeProvider as Provider, episodeId)
+
+      // ── Embed / iframe stream (e.g. Peachify Server 2) ──────────────────────
+      if (result.streamType === 'embed' && result.embedUrl) {
+        const episodeTitleFormatted = `${details.title} - S${selectedSeason}E${episode.episode_number} - ${episode.name}`
+        play(
+          episodeTitleFormatted,
+          details.poster,
+          { provider: episodeProvider, id: episodeId },
+          result.embedUrl,
+          [],
+          'Embed',
+          [],
+          String(details.tmdbId || details.id),
+          'tv',
+          details.description,
+          'embed',
+          result.embedUrl
+        )
+        navigate(paths.watch(episodeProvider, episodeId))
+        return
+      }
+
       const streams = result.streams
       if (!streams.length) {
         setFeedback('No playback streams available for this episode.')
@@ -309,18 +331,48 @@ export function DetailPage() {
     let targetId = activeId
     let dubParam: string | undefined = undefined
 
-    if (selectedLanguage && selectedLanguage.dubSubjectId && details.sources) {
-      const match = details.sources.find(s => s.id === selectedLanguage.dubSubjectId)
-      if (match) {
-        targetProvider = match.provider
-        targetId = match.id
-        dubParam = match.id
-      }
-    }
+    if (details.sources && details.sources.length > 0) {
+      let bestSource = null
 
-    if (targetProvider === 'tmdb' && details.sources && details.sources.length > 0) {
-      targetProvider = details.sources[0].provider
-      targetId = details.sources[0].id
+      if (selectedLanguage) {
+        // Try to match selected language on netmirror (Server 1) first
+        bestSource = details.sources.find(
+          (s) =>
+            s.provider === 'netmirror' &&
+            s.languages?.some((lang) => lang.toLowerCase() === selectedLanguage.language.toLowerCase())
+        )
+
+        // If not found, try on peachify (Server 2)
+        if (!bestSource) {
+          bestSource = details.sources.find(
+            (s) =>
+              s.provider === 'peachify' &&
+              s.languages?.some((lang) => lang.toLowerCase() === selectedLanguage.language.toLowerCase())
+          )
+        }
+
+        // Default match by dubSubjectId if still not found
+        if (!bestSource && selectedLanguage.dubSubjectId) {
+          bestSource = details.sources.find((s) => s.id === selectedLanguage.dubSubjectId)
+        }
+      }
+
+      // Default prioritization logic: netmirror first, then peachify, then fallback
+      if (!bestSource) {
+        bestSource = details.sources.find((s) => s.provider === 'netmirror')
+      }
+      if (!bestSource) {
+        bestSource = details.sources.find((s) => s.provider === 'peachify')
+      }
+      if (!bestSource) {
+        bestSource = details.sources[0]
+      }
+
+      if (bestSource) {
+        targetProvider = bestSource.provider
+        targetId = bestSource.id
+        dubParam = bestSource.id
+      }
     }
 
     const expectedSubjectId = dubParam ?? (activeProvider === 'tmdb' ? targetId : activeId)
@@ -330,8 +382,21 @@ export function DetailPage() {
 
       // ── Embed / iframe stream (e.g. Peachify Server 2) ──────────────────────
       if (result.streamType === 'embed' && result.embedUrl) {
-        // Open the embed in a new tab (Peachify runs in its own iframe player)
-        window.open(result.embedUrl, '_blank', 'noopener,noreferrer')
+        play(
+          details.title,
+          details.poster,
+          { provider: targetProvider, id: targetId },
+          result.embedUrl,
+          [],
+          'Embed',
+          [],
+          String(details.tmdbId || details.id),
+          details.mediaType,
+          details.description,
+          'embed',
+          result.embedUrl
+        )
+        navigate(paths.watch(targetProvider, targetId))
         return
       }
 
