@@ -117,6 +117,8 @@ export function PlayerPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [videoKey, setVideoKey] = useState(0)
+  const [embedFallbackIndex, setEmbedFallbackIndex] = useState(0)
+  const [embedLoadFailed, setEmbedLoadFailed] = useState(false)
 
   /* ── Audio / Subtitle / Quality state ── */
   const [audioTracks, setAudioTracks] = useState<AudioTrackInfo[]>([])
@@ -141,6 +143,7 @@ export function PlayerPage() {
     overview,
     streamType,
     embedUrl,
+    embedFallbacks,
     variants,
     selectedVariantId,
     setStreamVariant,
@@ -166,6 +169,12 @@ export function PlayerPage() {
       resumeTimeRef.current = 0
     }
   }, [historyItem])
+
+  // Reset embed fallback index when a new embed stream is loaded
+  useEffect(() => {
+    setEmbedFallbackIndex(0)
+    setEmbedLoadFailed(false)
+  }, [embedUrl])
 
   /* Persistent selections across quality changes & recovery */
   const selectedAudioLanguageRef = useRef<string | null>(null)
@@ -940,6 +949,19 @@ export function PlayerPage() {
     }
   }
 
+  // Compute the active embed URL (cycles through fallbacks on user request)
+  const allEmbedSources = embedFallbacks && embedFallbacks.length > 0
+    ? embedFallbacks
+    : embedUrl
+    ? [embedUrl]
+    : []
+  const activeEmbedUrl = allEmbedSources[embedFallbackIndex] || embedUrl || effectiveStreamUrl
+
+  const handleNextEmbedSource = () => {
+    setEmbedLoadFailed(false)
+    setEmbedFallbackIndex((prev) => (prev + 1) % Math.max(allEmbedSources.length, 1))
+  }
+
   /* ── Determine subtitle rendering strategy ──
    * If HLS.js provides subtitle tracks → use hls.subtitleTrack (in-band)
    * Otherwise, use <track> elements from backend storeSubtitles (out-of-band)
@@ -1065,12 +1087,40 @@ export function PlayerPage() {
               </div>
             </div>
           ) : streamType === 'embed' ? (
-            <iframe
-              src={embedUrl || effectiveStreamUrl}
-              className={`h-full w-full bg-black border-none ${statusMessage ? 'invisible' : ''}`}
-              allow="autoplay; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
+            <div className="relative h-full w-full bg-black">
+              <iframe
+                key={`embed_${embedFallbackIndex}`}
+                src={activeEmbedUrl}
+                className={`h-full w-full border-none ${statusMessage ? 'invisible' : ''}`}
+                allow="autoplay; fullscreen; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                referrerPolicy="no-referrer"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"
+              />
+              {/* Source switcher toolbar — shown only when multiple embed sources are available */}
+              {allEmbedSources.length > 1 && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-2xl border border-white/10 bg-black/80 backdrop-blur-md px-4 py-2 shadow-xl">
+                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest mr-1">Source</span>
+                  {allEmbedSources.map((src, idx) => {
+                    const srcHost = (() => { try { return new URL(src).hostname.replace('www.', '') } catch { return `Source ${idx + 1}` } })()
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => { setEmbedLoadFailed(false); setEmbedFallbackIndex(idx) }}
+                        className={`rounded-xl px-3 py-1.5 text-[10px] font-bold transition-all duration-200 cursor-pointer ${
+                          idx === embedFallbackIndex
+                            ? 'bg-mz-primary text-white shadow-[0_0_12px_rgba(229,9,20,0.4)]'
+                            : 'text-white/60 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        {srcHost}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           ) : (
             <video
               ref={videoRef}

@@ -56,6 +56,8 @@ interface PlayerState {
   streamType: 'embed' | 'hls' | 'mp4' | null
   /** Embed URL if streamType is embed */
   embedUrl: string | null
+  /** Ordered list of fallback embed URLs to try if primary embedUrl fails */
+  embedFallbacks: string[]
   /** Audio variants (e.g. dubs) available for this stream */
   variants: { id: string; language: string }[]
   /** Currently selected audio variant ID */
@@ -75,7 +77,8 @@ interface PlayerState {
     streamType?: 'embed' | 'hls' | 'mp4' | null,
     embedUrl?: string | null,
     variants?: { id: string; language: string }[],
-    selectedVariantId?: string | null
+    selectedVariantId?: string | null,
+    embedFallbacks?: string[]
   ) => void
   setStreamQuality: (streamUrl: string, quality: string, streams?: V2Stream[]) => void
   setStreamVariant: (
@@ -105,6 +108,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   overview: null,
   streamType: null,
   embedUrl: null,
+  embedFallbacks: [],
   variants: [],
   selectedVariantId: null,
 
@@ -122,7 +126,8 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     streamType = null,
     embedUrl = null,
     variants = [],
-    selectedVariantId = null
+    selectedVariantId = null,
+    embedFallbacks = []
   ) =>
     set({
       title,
@@ -138,6 +143,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       overview,
       streamType,
       embedUrl,
+      embedFallbacks,
       variants,
       selectedVariantId,
     }),
@@ -180,6 +186,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       overview: null,
       streamType: null,
       embedUrl: null,
+      embedFallbacks: [],
       variants: [],
       selectedVariantId: null,
     }),

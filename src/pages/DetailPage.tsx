@@ -271,7 +271,8 @@ export function DetailPage() {
           'embed',
           result.embedUrl,
           (result as any).stream?.variants || [],
-          episodeId
+          episodeId,
+          result.embedFallbacks || []
         )
         navigate(paths.watch(episodeProvider, episodeId))
         return
@@ -404,7 +405,8 @@ export function DetailPage() {
           'embed',
           result.embedUrl,
           (result as any).stream?.variants || [],
-          targetId
+          targetId,
+          result.embedFallbacks || []
         )
         navigate(paths.watch(targetProvider, targetId))
         return

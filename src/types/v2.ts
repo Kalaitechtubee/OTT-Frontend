@@ -85,11 +85,14 @@ export interface V2StreamResult {
   thumbnails?: string | null
   streams: V2Stream[]
   subtitles: V2Subtitle[]
-  /** Set when the stream is an iframe embed (e.g. Peachify Server 2) */
+  /** Set when the stream is an iframe embed (e.g. Peachify / vidsrc fallback) */
   streamType?: 'embed' | 'hls' | 'mp4'
   embedUrl?: string
+  /** Ordered list of fallback embed URLs to try if the primary embedUrl fails */
+  embedFallbacks?: string[]
   stream?: {
     variants?: { id: string; language: string }[]
+    embedFallbacks?: string[]
   }
 }
 
