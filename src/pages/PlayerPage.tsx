@@ -1224,7 +1224,21 @@ export function PlayerPage() {
                     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-2xl border border-white/10 bg-black/80 backdrop-blur-md px-4 py-2 shadow-xl">
                       <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest mr-1">Source</span>
                       {allEmbedSources.map((src, idx) => {
-                        const srcHost = (() => { try { return new URL(src).hostname.replace('www.', '') } catch { return `Source ${idx + 1}` } })()
+                        const srcHost = (() => {
+                          try {
+                            const host = new URL(src).hostname.replace('www.', '').toLowerCase()
+                            if (host.includes('peachify') || host.includes('eat-peach')) return 'Peachify'
+                            if (host.includes('vidsrc')) return 'VidSrc'
+                            if (host.includes('autoembed')) return 'AutoEmbed'
+                            if (host.includes('embed.su')) return 'EmbedSU'
+                            
+                            const parts = host.split('.')
+                            const name = parts.length > 1 ? parts[parts.length - 2] : host
+                            return name.charAt(0).toUpperCase() + name.slice(1)
+                          } catch {
+                            return `Server ${idx + 1}`
+                          }
+                        })()
                         return (
                           <button
                             key={idx}
