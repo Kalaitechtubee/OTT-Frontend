@@ -1104,7 +1104,7 @@ export function PlayerPage() {
                 allow="autoplay; fullscreen; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen
                 referrerPolicy="no-referrer"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"
+                sandbox={activeEmbedUrl.includes('peachify') ? undefined : "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"}
               />
               {/* Source switcher toolbar — shown only when multiple embed sources are available */}
               {allEmbedSources.length > 1 && (
