@@ -88,6 +88,9 @@ export interface V2StreamResult {
   /** Set when the stream is an iframe embed (e.g. Peachify Server 2) */
   streamType?: 'embed' | 'hls' | 'mp4'
   embedUrl?: string
+  stream?: {
+    variants?: { id: string; language: string }[]
+  }
 }
 
 /** Parse a V2 rating string like "TMDB 7.5" into a number (7.5) */

@@ -56,6 +56,10 @@ interface PlayerState {
   streamType: 'embed' | 'hls' | 'mp4' | null
   /** Embed URL if streamType is embed */
   embedUrl: string | null
+  /** Audio variants (e.g. dubs) available for this stream */
+  variants: { id: string; language: string }[]
+  /** Currently selected audio variant ID */
+  selectedVariantId: string | null
 
   play: (
     title: string,
@@ -69,9 +73,20 @@ interface PlayerState {
     mediaType?: 'movie' | 'tv' | null,
     overview?: string | null,
     streamType?: 'embed' | 'hls' | 'mp4' | null,
-    embedUrl?: string | null
+    embedUrl?: string | null,
+    variants?: { id: string; language: string }[],
+    selectedVariantId?: string | null
   ) => void
   setStreamQuality: (streamUrl: string, quality: string, streams?: V2Stream[]) => void
+  setStreamVariant: (
+    streamUrl: string,
+    selectedVariantId: string,
+    quality: string,
+    streams: V2Stream[],
+    subtitles?: V2Subtitle[],
+    streamType?: 'embed' | 'hls' | 'mp4' | null,
+    embedUrl?: string | null
+  ) => void
   setProgress: (n: number) => void
   stop: () => void
 }
@@ -90,6 +105,8 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   overview: null,
   streamType: null,
   embedUrl: null,
+  variants: [],
+  selectedVariantId: null,
 
   play: (
     title,
@@ -103,7 +120,9 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     mediaType = null,
     overview = null,
     streamType = null,
-    embedUrl = null
+    embedUrl = null,
+    variants = [],
+    selectedVariantId = null
   ) =>
     set({
       title,
@@ -119,6 +138,8 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       overview,
       streamType,
       embedUrl,
+      variants,
+      selectedVariantId,
     }),
 
   setStreamQuality: (streamUrl, quality, streams) =>
@@ -126,6 +147,20 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       streamUrl,
       selectedQuality: quality,
       streams: streams ? toQualityItems(streams) : state.streams,
+    })),
+
+  setStreamVariant: (streamUrl, selectedVariantId, quality, streams, subtitles = [], streamType = null, embedUrl = null) =>
+    set((state) => ({
+      streamUrl,
+      selectedVariantId,
+      selectedQuality: quality,
+      streams: toQualityItems(streams),
+      subtitles,
+      streamType: streamType || (embedUrl ? 'embed' : 'hls'),
+      embedUrl,
+      playContext: state.playContext
+        ? { ...state.playContext, id: selectedVariantId }
+        : null,
     })),
 
   setProgress: (progress) => set({ progress }),
@@ -145,5 +180,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       overview: null,
       streamType: null,
       embedUrl: null,
+      variants: [],
+      selectedVariantId: null,
     }),
 }))

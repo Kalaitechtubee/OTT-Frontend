@@ -33,6 +33,10 @@ interface PlayerSettingsPanelProps {
   qualityOptions: QualityOption[]
   selectedQuality: string
   onQualityChange: (value: string) => void
+  /* Variants (Audio Dubs) */
+  variants?: { id: string; language: string }[]
+  selectedVariantId?: string | null
+  onVariantChange?: (variantId: string) => void
 }
 
 type PanelView = 'main' | 'audio' | 'subtitles' | 'quality'
@@ -76,6 +80,9 @@ export function PlayerSettingsPanel({
   qualityOptions,
   selectedQuality,
   onQualityChange,
+  variants = [],
+  selectedVariantId = null,
+  onVariantChange,
 }: PlayerSettingsPanelProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [view, setView] = useState<PanelView>('main')
@@ -113,6 +120,9 @@ export function PlayerSettingsPanel({
   const goBack = useCallback(() => setView('main'), [])
 
   const selectedAudioLabel = audioTracks.find(t => t.id === selectedAudioTrackId)
+  const currentVariantLabel = variants.find(v => v.id === selectedVariantId)?.language
+  const displayAudioLabel = currentVariantLabel || (selectedAudioLabel ? cleanLabel(selectedAudioLabel) : 'Default')
+
   const selectedSubLabel = selectedSubtitleTrackId === -1
     ? 'Off'
     : subtitleTracks.find(t => t.id === selectedSubtitleTrackId)
@@ -153,7 +163,7 @@ export function PlayerSettingsPanel({
               </div>
 
               {/* Audio */}
-              {audioTracks.length > 0 && (
+              {(audioTracks.length > 0 || variants.length > 1) && (
                 <button
                   type="button"
                   onClick={() => setView('audio')}
@@ -165,8 +175,8 @@ export function PlayerSettingsPanel({
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-white">Audio</div>
-                    <div className="truncate text-xs text-white/50">
-                      {selectedAudioLabel ? cleanLabel(selectedAudioLabel) : 'Default'}
+                    <div className="truncate text-xs text-white/50 font-semibold text-[var(--mz-primary)]">
+                      {displayAudioLabel}
                     </div>
                   </div>
                   <ChevronRight className="h-4 w-4 text-white/30 transition-transform group-hover:translate-x-0.5 group-hover:text-white/60" />
@@ -225,19 +235,37 @@ export function PlayerSettingsPanel({
               iconBg="bg-blue-500/15 text-blue-400"
               onBack={goBack}
             >
-              {audioTracks.map((track) => {
-                const isActive = track.id === selectedAudioTrackId
-                return (
-                  <TrackItem
-                    key={track.id}
-                    label={cleanLabel(track)}
-                    isActive={isActive}
-                    onClick={() => {
-                      onAudioTrackChange(track.id)
-                    }}
-                  />
-                )
-              })}
+              {variants.length > 0 ? (
+                variants.map((v) => {
+                  const isActive = v.id === selectedVariantId
+                  return (
+                    <TrackItem
+                      key={v.id}
+                      label={v.language}
+                      isActive={isActive}
+                      onClick={() => {
+                        if (onVariantChange) onVariantChange(v.id)
+                        setIsOpen(false)
+                        setView('main')
+                      }}
+                    />
+                  )
+                })
+              ) : (
+                audioTracks.map((track) => {
+                  const isActive = track.id === selectedAudioTrackId
+                  return (
+                    <TrackItem
+                      key={track.id}
+                      label={cleanLabel(track)}
+                      isActive={isActive}
+                      onClick={() => {
+                        onAudioTrackChange(track.id)
+                      }}
+                    />
+                  )
+                })
+              )}
             </SubPanel>
           )}
 

@@ -71,10 +71,27 @@ function parseWorkerParams(workerUrl: string): {
     const parsed = new URL(workerUrl)
     const cdnUrl = parsed.searchParams.get('url')
     if (!cdnUrl) return null
+
+    let referer = parsed.searchParams.get('referer') ?? undefined
+    let origin = parsed.searchParams.get('origin') ?? undefined
+
+    const headersParam = parsed.searchParams.get('headers')
+    if (headersParam) {
+      try {
+        const headers = JSON.parse(headersParam)
+        if (headers.referer) referer = headers.referer
+        if (headers.Referer) referer = headers.Referer
+        if (headers.origin) origin = headers.origin
+        if (headers.Origin) origin = headers.Origin
+      } catch (e) {
+        console.warn('Failed to parse headers from worker url:', e)
+      }
+    }
+
     return {
       cdnUrl,
-      referer: parsed.searchParams.get('referer') ?? undefined,
-      origin: parsed.searchParams.get('origin') ?? undefined,
+      referer,
+      origin,
     }
   } catch {
     return null

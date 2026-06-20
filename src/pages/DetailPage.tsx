@@ -154,6 +154,7 @@ export function DetailPage() {
     title?: string
     context?: { provider: string; id: string }
     subtitles?: V2Subtitle[]
+    variants?: { id: string; language: string }[]
   } | null>(null)
 
 
@@ -268,7 +269,9 @@ export function DetailPage() {
           'tv',
           details.description,
           'embed',
-          result.embedUrl
+          result.embedUrl,
+          (result as any).stream?.variants || [],
+          episodeId
         )
         navigate(paths.watch(episodeProvider, episodeId))
         return
@@ -299,7 +302,11 @@ export function DetailPage() {
           result.subtitles,
           String(details.tmdbId || details.id),
           'tv',
-          details.description
+          details.description,
+          null,
+          null,
+          (result as any).stream?.variants,
+          episodeId
         )
         navigate(paths.watch(episodeProvider, episodeId))
       } else {
@@ -308,7 +315,8 @@ export function DetailPage() {
           streams,
           title: episodeTitleFormatted,
           context: { provider: episodeProvider, id: episodeId },
-          subtitles: result.subtitles
+          subtitles: result.subtitles,
+          variants: (result as any).stream?.variants
         } as any)
       }
     } catch (err) {
@@ -394,7 +402,9 @@ export function DetailPage() {
           details.mediaType,
           details.description,
           'embed',
-          result.embedUrl
+          result.embedUrl,
+          (result as any).stream?.variants || [],
+          targetId
         )
         navigate(paths.watch(targetProvider, targetId))
         return
@@ -424,7 +434,11 @@ export function DetailPage() {
           result.subtitles,
           String(details.tmdbId || details.id),
           details.mediaType,
-          details.description
+          details.description,
+          null,
+          null,
+          (result as any).stream?.variants,
+          targetId
         )
         navigate(paths.watch(targetProvider, targetId))
       } else {
@@ -433,7 +447,8 @@ export function DetailPage() {
           streams,
           title: details.title,
           context: { provider: targetProvider, id: targetId },
-          subtitles: result.subtitles
+          subtitles: result.subtitles,
+          variants: (result as any).stream?.variants
         })
       }
     } catch (err) {
@@ -531,7 +546,11 @@ export function DetailPage() {
         targetSubtitles,
         String(details.tmdbId || details.id),
         details.mediaType,
-        details.description
+        details.description,
+        null,
+        null,
+        (qualityModal as any).variants,
+        targetContext.id
       )
       navigate(paths.watch(targetContext.provider, targetContext.id))
       return

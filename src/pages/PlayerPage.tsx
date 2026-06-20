@@ -141,6 +141,9 @@ export function PlayerPage() {
     overview,
     streamType,
     embedUrl,
+    variants,
+    selectedVariantId,
+    setStreamVariant,
   } = usePlayerStore()
   const items = useHistoryStore((s) => s.items)
   const addOrUpdate = useHistoryStore((s) => s.addOrUpdate)
@@ -832,6 +835,77 @@ export function PlayerPage() {
     [processedSubtitles],
   )
 
+  /* ─── Audio Language Variant change handler ─── */
+  const handleVariantChange = useCallback(
+    async (variantId: string) => {
+      if (!playContext) return
+      const targetVariant = variants.find((v) => v.id === variantId)
+      const targetLangName = targetVariant ? targetVariant.language : 'Selected Language'
+
+      const video = videoRef.current
+      const savedPos = video?.currentTime ?? 0
+
+      setStatusMessage(`Switching to ${targetLangName}...`)
+      setPlaybackError(null)
+
+      try {
+        const result = await getStreamV2(
+          playContext.provider as Provider,
+          variantId
+        )
+
+        // Support both embed and native streams
+        if (result.streamType === 'embed' && result.embedUrl) {
+          resumeTimeRef.current = savedPos
+          setVideoKey((prev) => prev + 1)
+          
+          setStreamVariant(
+            result.embedUrl,
+            variantId,
+            'Embed',
+            [],
+            [],
+            'embed',
+            result.embedUrl
+          )
+          setStatusMessage(null)
+          return
+        }
+
+        const freshStreams = result.streams
+        if (!freshStreams.length) {
+          setPlaybackError(`No playback streams available for ${targetLangName}.`)
+          setStatusMessage(null)
+          return
+        }
+
+        // Match closest quality to current or pick first
+        const match =
+          freshStreams.find((s) => s.quality === selectedQuality) || freshStreams[0]
+
+        resumeTimeRef.current = savedPos
+        hasAutoSelectedAudioRef.current = false
+        setVideoKey((prev) => prev + 1)
+
+        setStreamVariant(
+          match.url,
+          variantId,
+          match.quality,
+          freshStreams,
+          result.subtitles,
+          'hls',
+          null
+        )
+        setStatusMessage(null)
+      } catch (err) {
+        console.error('Failed to change audio variant:', err)
+        setPlaybackError(`Failed to load ${targetLangName} audio stream.`)
+        setStatusMessage(null)
+      }
+    },
+    [playContext, selectedQuality, variants, setStreamVariant]
+  )
+
   /* ─── Quality change handler ─── */
   const handleQualityChange = useCallback(
     (value: string) => {
@@ -943,6 +1017,9 @@ export function PlayerPage() {
               qualityOptions={qualityOptions}
               selectedQuality={selectedQuality}
               onQualityChange={handleQualityChange}
+              variants={variants}
+              selectedVariantId={selectedVariantId}
+              onVariantChange={handleVariantChange}
             />
           </div>
         )}
