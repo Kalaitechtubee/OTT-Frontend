@@ -22,6 +22,7 @@ import {
   getSyncCachedDetail,
   getSyncCachedDetailsByTmdbId,
 } from '@/services/api'
+
 import { useDownloadStore } from '@/store/downloadStore'
 import { usePlayerStore } from '@/store/playerStore'
 import { paths } from '@/routes/paths'
@@ -177,8 +178,11 @@ export function DetailPage() {
   const [episodes, setEpisodes] = useState<any[]>([])
   const [loadingEpisodes, setLoadingEpisodes] = useState(false)
 
-  // Background provider status state
-  const [providerStatuses, setProviderStatuses] = useState<Record<string, 'checking' | 'available' | 'unavailable'>>({})
+  // Server status is provided by the backend's checkAvailability() in the details response.
+  // We derive it from details.sources — no client-side polling is needed.
+  // 'available' = source returned by backend availability check (present in sources array)
+  // This eliminates duplicate provider requests and race conditions.
+
 
   const activeProvider = provider || details?.provider
   const activeId = id || details?.id
@@ -216,29 +220,9 @@ export function DetailPage() {
     }
   }, [provider, id, tmdbId, titleParam, yearParam, sourcesParam, searchParams, cachedDetails])
 
-  // Run provider availability checks in the background asynchronously
-  useEffect(() => {
-    if (!details?.sources || details.sources.length === 0) return
-
-    let active = true
-    details.sources.forEach(async (source) => {
-      if (!active) return
-      setProviderStatuses((prev) => ({ ...prev, [source.id]: 'checking' }))
-      try {
-        const res = await getStreamV2(source.provider as Provider, source.id)
-        if (!active) return
-        const isAvail = (res.streamType === 'embed' && !!res.embedUrl) || (res.streams && res.streams.length > 0)
-        setProviderStatuses((prev) => ({ ...prev, [source.id]: isAvail ? 'available' : 'unavailable' }))
-      } catch (err) {
-        if (!active) return
-        setProviderStatuses((prev) => ({ ...prev, [source.id]: 'unavailable' }))
-      }
-    })
-
-    return () => {
-      active = false
-    }
-  }, [details])
+  // Provider status is derived from the backend's availability response (details.sources).
+  // Source indicators are shown directly from details.sources — no client-side polling needed.
+  // This eliminates duplicate stream requests and ensures statuses reflect backend priority.
 
   // Set default selected season when details are loaded
   useEffect(() => {
@@ -309,72 +293,41 @@ export function DetailPage() {
     navigate(`/play/${episodeProvider}/${episodeId}?${query.toString()}`)
   }
 
-  // Play Movie / Stream handler (navigates to player instantly; handles background resolution)
-  const handlePlay = () => {
-    if (!activeProvider || !activeId || !details) {
+  // Play Movie / Stream handler
+  // For auto-play: routes through /play/tmdb/:tmdbId — the backend resolves which provider.
+  // For manual server selection (user taps a specific server badge): routes through /play/:provider/:id.
+  const handlePlay = (explicitSource?: { provider: string; id: string }) => {
+    if (!details) {
       setFeedback('Streaming sources are currently unavailable for this title.')
       return
     }
 
-    let targetProvider = activeProvider
-    let targetId = activeId
-    let dubParam: string | undefined = undefined
-
-    if (details.sources && details.sources.length > 0) {
-      let bestSource = null
-
-      if (selectedLanguage) {
-        bestSource = details.sources.find(
-          (s) =>
-            s.provider === 'netmirror' &&
-            s.languages?.some((lang) => lang.toLowerCase() === selectedLanguage.language.toLowerCase())
-        )
-
-        if (!bestSource) {
-          bestSource = details.sources.find(
-            (s) =>
-              s.provider === 'peachify' &&
-              s.languages?.some((lang) => lang.toLowerCase() === selectedLanguage.language.toLowerCase())
-          )
-        }
-
-        if (!bestSource && selectedLanguage.dubSubjectId) {
-          bestSource = details.sources.find((s) => s.id === selectedLanguage.dubSubjectId)
-        }
-      }
-
-      if (!bestSource) {
-        bestSource = details.sources.find((s) => s.provider === 'netmirror')
-      }
-      if (!bestSource) {
-        bestSource = details.sources.find((s) => s.provider === 'peachify')
-      }
-      if (!bestSource) {
-        bestSource = details.sources[0]
-      }
-
-      if (bestSource) {
-        targetProvider = bestSource.provider
-        targetId = bestSource.id
-        dubParam = bestSource.id
-      }
-    }
-
-    // Pass metadata details via query params to show immediate loader themed UI in watcher
     const query = new URLSearchParams()
     query.set('title', details.title)
     if (details.poster) query.set('poster', details.poster)
     if (details.description) query.set('overview', details.description)
     if (details.tmdbId) query.set('tmdbId', String(details.tmdbId))
     if (details.mediaType) query.set('mediaType', details.mediaType)
-    if (dubParam) query.set('dub', dubParam)
     if (details.sources && details.sources.length > 0) {
       const srcStr = details.sources.map((s) => `${s.provider}:${s.id}`).join(',')
       query.set('sources', srcStr)
     }
 
-    navigate(`/play/${targetProvider}/${targetId}?${query.toString()}`)
+    if (explicitSource) {
+      // User explicitly selected a server — route directly to that provider
+      navigate(`/play/${explicitSource.provider}/${explicitSource.id}?${query.toString()}`)
+    } else {
+      // Auto-play: let the backend pipeline decide the provider.
+      // Navigate to /play/tmdb/:tmdbId — PlayerPage calls resolveStream() which runs the pipeline.
+      const tmdbTarget = details.tmdbId || details.id
+      if (!tmdbTarget) {
+        setFeedback('Streaming sources are currently unavailable for this title.')
+        return
+      }
+      navigate(`/play/tmdb/${tmdbTarget}?${query.toString()}`)
+    }
   }
+
 
   // Directly trigger download to local device (bypassing the type selection modal)
   const handleDownloadClick = async () => {
@@ -716,33 +669,57 @@ export function DetailPage() {
               </div>
             )}
 
-            {/* Background-loaded active streaming server indicators */}
+            {/* Streaming server status indicators — ALL providers, availability from backend pipeline */}
             {details.sources && details.sources.length > 0 && (
               <div className="mt-5 border-t border-white/5 pt-4">
                 <p className="text-xs font-bold uppercase tracking-widest text-mz-secondary">
                   Streaming Servers
                 </p>
+                <p className="mt-1 text-[10px] text-mz-secondary/60">
+                  Click a server to play from it directly.
+                </p>
                 <div className="mt-2 flex flex-wrap gap-2.5">
-                  {details.sources.map((src) => {
-                    const status = providerStatuses[src.id] || 'checking'
-                    const statusColors = {
-                      checking: 'text-mz-secondary border-white/10 bg-white/5 animate-pulse',
-                      available: 'text-emerald-400 border-emerald-500/35 bg-emerald-500/10',
-                      unavailable: 'text-rose-400 border-rose-500/35 bg-rose-500/10',
-                    }
+                  {details.sources.map((src, idx) => {
+                    // Backend sets available=true only if the stream pipeline confirmed it works.
+                    // All providers are always listed — frontend never filters or hides any.
+                    const isAvailable = src.available !== false // default to true for legacy responses
+                    const isDefault = src.provider === details.defaultProvider
+                    const serverNum = src.serverIndex ?? (idx + 1)
+                    const serverLabel = src.label || `Server ${serverNum}`
+
                     return (
-                      <span
-                        key={src.id}
-                        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-bold ${statusColors[status]}`}
+                      <button
+                        key={`${src.provider}-${src.id}-${idx}`}
+                        onClick={() => isAvailable ? handlePlay({ provider: src.provider, id: src.id }) : undefined}
+                        title={isAvailable ? `Play from ${serverLabel}` : `${serverLabel} is currently unavailable`}
+                        disabled={!isAvailable}
+                        className={[
+                          'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-bold transition select-none',
+                          isAvailable
+                            ? 'text-emerald-400 border-emerald-500/35 bg-emerald-500/10 hover:bg-emerald-500/20 hover:border-emerald-400/60 cursor-pointer'
+                            : 'text-mz-secondary/50 border-white/8 bg-white/3 cursor-not-allowed opacity-60',
+                          isDefault && isAvailable ? 'ring-1 ring-emerald-400/40' : '',
+                        ].join(' ')}
                       >
-                        <span className={`h-1.5 w-1.5 rounded-full ${status === 'available' ? 'bg-emerald-400' : status === 'unavailable' ? 'bg-rose-400' : 'bg-mz-secondary/60'}`} />
-                        {src.provider === 'netmirror' ? 'Server 1 (NetMirror)' : src.provider === 'peachify' ? 'Server 2 (Peachify)' : `Server (${src.provider})`}
-                      </span>
+                        <span className={[
+                          'h-1.5 w-1.5 rounded-full',
+                          isAvailable ? 'bg-emerald-400' : 'bg-mz-secondary/30',
+                        ].join(' ')} />
+                        {serverLabel}
+                        {isDefault && isAvailable && (
+                          <span className="ml-1 text-[9px] uppercase tracking-wider opacity-70">Auto</span>
+                        )}
+                        {!isAvailable && (
+                          <span className="ml-1 text-[9px] uppercase tracking-wider opacity-50">Offline</span>
+                        )}
+                      </button>
                     )
                   })}
                 </div>
               </div>
             )}
+
+
 
             {/* Description / Overview */}
             {details.description && (
@@ -801,7 +778,7 @@ export function DetailPage() {
               <button
                 type="button"
                 disabled={playing || !hasStreams}
-                onClick={handlePlay}
+                onClick={() => handlePlay()}
                 className="btn-primary w-full sm:w-auto px-8 py-4 text-base"
               >
                 <Play className="h-5 w-5 fill-white" />

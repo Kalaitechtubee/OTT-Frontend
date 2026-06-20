@@ -10,7 +10,8 @@ import {
 import { usePlayerStore } from '@/store/playerStore'
 import { useHistoryStore } from '@/store/historyStore'
 import { paths } from '@/routes/paths'
-import { getStreamV2 } from '@/services/api'
+import { getStreamV2, resolveStream } from '@/services/api'
+
 import type { Movie } from '@/types/movie'
 import type { Provider } from '@/types/v2'
 
@@ -162,7 +163,8 @@ export function PlayerPage() {
   // Dynamically resolve stream in the background if not pre-loaded (e.g. reload or instant navigation)
   useEffect(() => {
     // If the stream URL is already set and matches the active route ID, we don't need to resolve again
-    if (effectiveStreamUrl && playContext?.id === id && playContext?.provider === provider) {
+    const matchesProvider = playContext?.provider === provider || (provider === 'tmdb' && playContext?.provider !== undefined)
+    if (effectiveStreamUrl && playContext?.id === id && matchesProvider) {
       setResolvingStream(false)
       return
     }
@@ -184,6 +186,8 @@ export function PlayerPage() {
         const mediaTypeParam = (searchParams.get('mediaType') as 'movie' | 'tv') || 'movie'
         const dubParam = searchParams.get('dub') || undefined
         const sourcesParam = searchParams.get('sources')
+        const seasonParam = searchParams.get('season')
+        const episodeParam = searchParams.get('episode')
 
         let sourcesList: { provider: string; id: string }[] | undefined = undefined
         if (sourcesParam) {
@@ -193,14 +197,34 @@ export function PlayerPage() {
           })
         }
 
-        const res = await getStreamV2(provider as Provider, id, sourcesList, dubParam)
+        let res
+
+        if (provider === 'tmdb') {
+          // Backend-controlled pipeline: backend decides which provider to use.
+          // This is the deterministic path — NetMirror first, Peachify on fallback.
+          let tmdbTarget = id || tmdbIdParam || ''
+          const tvMatch = String(tmdbTarget).match(/^(\d+)[-:](\d+)[-:](\d+)$/)
+          let season = seasonParam ? parseInt(seasonParam, 10) : undefined
+          let episode = episodeParam ? parseInt(episodeParam, 10) : undefined
+          if (tvMatch) {
+            tmdbTarget = tvMatch[1]
+            if (season === undefined) season = parseInt(tvMatch[2], 10)
+            if (episode === undefined) episode = parseInt(tvMatch[3], 10)
+          }
+          res = await resolveStream(tmdbTarget, mediaTypeParam, season, episode)
+        } else {
+          // Explicit provider: user manually selected a server (e.g. tapped 'Server 2').
+          // Route directly to that provider — no pipeline involved.
+          res = await getStreamV2(provider as any, id, sourcesList, dubParam)
+        }
+
         if (!active) return
 
         if (res.streamType === 'embed' && res.embedUrl) {
           play(
             titleParam,
             posterParam,
-            { provider, id },
+            { provider: res.selectedProvider || provider!, id },
             res.embedUrl,
             [],
             'Embed',
@@ -218,7 +242,7 @@ export function PlayerPage() {
           play(
             titleParam,
             posterParam,
-            { provider, id },
+            { provider: res.selectedProvider || provider!, id },
             res.streams[0].url,
             res.streams,
             res.streams[0].quality,
@@ -243,6 +267,7 @@ export function PlayerPage() {
         }
       }
     }
+
 
     resolve()
 
@@ -1070,7 +1095,9 @@ export function PlayerPage() {
   const showVideoPlaceholder = resolvingStream || !effectiveStreamUrl
 
   const close = () => {
-    if (playContext) {
+    if (provider === 'tmdb' && tmdbId) {
+      navigate(paths.tmdbDetail(tmdbId, { type: mediaType || 'movie', title: title || '' }))
+    } else if (playContext) {
       navigate(paths.detail(playContext.provider, playContext.id))
     } else {
       navigate(paths.home)

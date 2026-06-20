@@ -86,7 +86,7 @@ export async function getDetailsV2(
   }
 }
 
-// ─── V2 Stream ────────────────────────────────────────────────────────────────
+// ─── V2 Stream (explicit provider — for manual server switching) ───────────────
 export async function getStreamV2(
   provider: Provider,
   id: string,
@@ -112,6 +112,40 @@ export async function getStreamV2(
     return { success: false, streams: [], subtitles: [] }
   }
 }
+
+// ─── Backend-controlled pipeline stream (backend picks provider automatically) ──
+/**
+ * Calls the backend's deterministic sequential provider pipeline.
+ * The backend — NOT the frontend — decides which provider to use.
+ * Provider order: NetMirror (P1) → Peachify (P2) → future providers.
+ *
+ * Use this for ALL auto-play scenarios.
+ * Use getStreamV2(provider, id) ONLY when the user explicitly selects a server.
+ */
+export async function resolveStream(
+  tmdbId: string,
+  type: 'movie' | 'tv' = 'movie',
+  season?: number,
+  episode?: number,
+): Promise<V2StreamResult> {
+  try {
+    const params: Record<string, string> = { type }
+    if (season !== undefined) params.season = String(season)
+    if (episode !== undefined) params.episode = String(episode)
+
+    const data = await request<V2StreamResult>(
+      `/api/v2/stream/tmdb/${tmdbId}`,
+      params,
+      { ttlMs: STREAM_TTL_MS, skipCache: true, retries: 0 },
+    )
+    return data ?? { success: false, available: false, streams: [], subtitles: [] }
+  } catch (err) {
+    if (err instanceof ApiHttpError) throw err
+    return { success: false, available: false, streams: [], subtitles: [] }
+  }
+}
+
+
 
 // ─── TMDB List Proxies ────────────────────────────────────────────────────────
 export async function getTmdbList(

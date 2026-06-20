@@ -52,7 +52,19 @@ export interface V2Details {
   tmdbId: number | null
   imdbId?: string | null
   mediaType: 'movie' | 'tv'
-  sources?: { provider: Provider; id: string; languages?: string[]; label?: string; streamType?: string }[]
+  sources?: {
+    provider: Provider
+    id: string
+    languages?: string[]
+    label?: string
+    streamType?: string
+    /** True = backend confirmed this provider has a working stream */
+    available?: boolean
+    /** 1-based position in the backend priority list (Server 1, Server 2...) */
+    serverIndex?: number
+    /** Optional pre-resolved embed URL for embed-type providers */
+    embedUrl?: string | null
+  }[]
   audioLanguages?: string[]
   seasons?: {
     season_number: number
@@ -60,7 +72,14 @@ export interface V2Details {
     name: string
     providerSeasonId?: string
   }[]
+  /**
+   * The backend's chosen highest-priority available provider.
+   * Frontend uses this for auto-play routing without selecting a provider itself.
+   * Set by the sequential pipeline in checkAvailability().
+   */
+  defaultProvider?: string | null
 }
+
 
 export interface V2Stream {
   quality: string
@@ -78,7 +97,13 @@ export interface V2Subtitle {
 
 export interface V2StreamResult {
   success: boolean
+  /** Provider that actually served this stream (set by backend pipeline) */
   provider?: string
+  /** The provider selected by the backend pipeline (same as provider) */
+  selectedProvider?: string
+  /** True if the pipeline fell back from Provider 1 to a subsequent provider */
+  fallbackTriggered?: boolean
+  available?: boolean
   subjectId?: string
   title?: string
   poster?: string | null
@@ -86,7 +111,7 @@ export interface V2StreamResult {
   streams: V2Stream[]
   subtitles: V2Subtitle[]
   /** Set when the stream is an iframe embed (e.g. Peachify / vidsrc fallback) */
-  streamType?: 'embed' | 'hls' | 'mp4'
+  streamType?: 'embed' | 'hls' | 'mp4' | 'native'
   embedUrl?: string
   /** Ordered list of fallback embed URLs to try if the primary embedUrl fails */
   embedFallbacks?: string[]
@@ -95,6 +120,7 @@ export interface V2StreamResult {
     embedFallbacks?: string[]
   }
 }
+
 
 /** Parse a V2 rating string like "TMDB 7.5" into a number (7.5) */
 export function parseV2Rating(raw: string | null | undefined): number {
