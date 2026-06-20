@@ -30,6 +30,8 @@ interface MoviesCacheData {
 
 // In-memory cache outside component logic
 let moviesCache: MoviesCacheData | null = null
+let moviesCacheTime = 0
+const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes cache TTL
 
 export function MoviesPage() {
   const preferredLanguage = useAppStore((s) => s.preferredLanguage)
@@ -54,8 +56,13 @@ export function MoviesPage() {
   const [errorMessage, setErrorMessage] = useState<string>()
 
   const loadMovies = useCallback(async () => {
-    // Only show loader skeletons if we don't have matching cached contents
+    // Skip loading if cached data is fresh and languages match
     const activeCacheHit = moviesCache && moviesCache.language === preferredLanguage
+    if (activeCacheHit && Date.now() - moviesCacheTime < CACHE_TTL_MS) {
+      return
+    }
+
+    // Only show loader skeletons if we don't have matching cached contents
     if (!activeCacheHit) {
       setLoading(true)
     }
@@ -147,6 +154,7 @@ export function MoviesPage() {
         horrorMovies: horrorData,
         scifiMovies: scifiData,
       }
+      moviesCacheTime = Date.now()
     } catch (err) {
       console.error('Failed to load TMDB movies:', err)
       // Only show error screen if we have no cache to fall back on

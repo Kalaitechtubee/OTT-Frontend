@@ -104,6 +104,7 @@ export function PlayerPage() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const resumeTimeRef = useRef(0)
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const recoveryAttemptsRef = useRef(0)
   const failedQualitiesRef = useRef<Set<string>>(new Set())
@@ -118,7 +119,6 @@ export function PlayerPage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [videoKey, setVideoKey] = useState(0)
   const [embedFallbackIndex, setEmbedFallbackIndex] = useState(0)
-  const [embedLoadFailed, setEmbedLoadFailed] = useState(false)
 
   /* ── Audio / Subtitle / Quality state ── */
   const [audioTracks, setAudioTracks] = useState<AudioTrackInfo[]>([])
@@ -173,7 +173,6 @@ export function PlayerPage() {
   // Reset embed fallback index when a new embed stream is loaded
   useEffect(() => {
     setEmbedFallbackIndex(0)
-    setEmbedLoadFailed(false)
   }, [embedUrl])
 
   /* Persistent selections across quality changes & recovery */
@@ -371,6 +370,20 @@ export function PlayerPage() {
       navigate(paths.home, { replace: true })
     }
   }, [effectiveStreamUrl, navigate])
+
+  /* ── Stop player on unmount (StrictMode-safe) ── */
+  useEffect(() => {
+    if (stopTimerRef.current) {
+      clearTimeout(stopTimerRef.current)
+      stopTimerRef.current = null
+    }
+
+    return () => {
+      stopTimerRef.current = setTimeout(() => {
+        stop()
+      }, 100)
+    }
+  }, [stop])
 
   /* ── Progress / history tracking ── */
   useEffect(() => {
@@ -941,7 +954,6 @@ export function PlayerPage() {
   if (!effectiveStreamUrl) return null
 
   const close = () => {
-    stop()
     if (playContext) {
       navigate(paths.detail(playContext.provider, playContext.id))
     } else {
@@ -957,10 +969,7 @@ export function PlayerPage() {
     : []
   const activeEmbedUrl = allEmbedSources[embedFallbackIndex] || embedUrl || effectiveStreamUrl
 
-  const handleNextEmbedSource = () => {
-    setEmbedLoadFailed(false)
-    setEmbedFallbackIndex((prev) => (prev + 1) % Math.max(allEmbedSources.length, 1))
-  }
+
 
   /* ── Determine subtitle rendering strategy ──
    * If HLS.js provides subtitle tracks → use hls.subtitleTrack (in-band)
@@ -1107,7 +1116,7 @@ export function PlayerPage() {
                       <button
                         key={idx}
                         type="button"
-                        onClick={() => { setEmbedLoadFailed(false); setEmbedFallbackIndex(idx) }}
+                        onClick={() => { setEmbedFallbackIndex(idx) }}
                         className={`rounded-xl px-3 py-1.5 text-[10px] font-bold transition-all duration-200 cursor-pointer ${
                           idx === embedFallbackIndex
                             ? 'bg-mz-primary text-white shadow-[0_0_12px_rgba(229,9,20,0.4)]'

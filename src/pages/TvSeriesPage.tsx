@@ -30,6 +30,8 @@ interface TvCacheData {
 
 // In-memory cache outside component logic
 let tvCache: TvCacheData | null = null
+let tvCacheTime = 0
+const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes cache TTL
 
 export function TvSeriesPage() {
   const preferredLanguage = useAppStore((s) => s.preferredLanguage)
@@ -54,8 +56,13 @@ export function TvSeriesPage() {
   const [errorMessage, setErrorMessage] = useState<string>()
 
   const loadTvSeries = useCallback(async () => {
-    // Only show loader skeletons if we don't have matching cached contents
+    // Skip loading if cached data is fresh and languages match
     const activeCacheHit = tvCache && tvCache.language === preferredLanguage
+    if (activeCacheHit && Date.now() - tvCacheTime < CACHE_TTL_MS) {
+      return
+    }
+
+    // Only show loader skeletons if we don't have matching cached contents
     if (!activeCacheHit) {
       setLoading(true)
     }
@@ -146,6 +153,7 @@ export function TvSeriesPage() {
         dramaTv: dramaData,
         mysteryTv: mysteryData,
       }
+      tvCacheTime = Date.now()
     } catch (err) {
       console.error('Failed to load TMDB TV Series:', err)
       // Only show error screen if we have no cache to fall back on

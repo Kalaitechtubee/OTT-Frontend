@@ -33,6 +33,8 @@ interface HomeCacheData {
 
 // In-memory cache outside the React cycle to persist loaded content across mounts
 let homeCache: HomeCacheData | null = null
+let homeCacheTime = 0
+const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes cache TTL
 
 export function HomePage() {
   const [heroItems, setHeroItems] = useState<V2SearchResult[]>(homeCache?.heroItems ?? [])
@@ -61,6 +63,11 @@ export function HomePage() {
   const [errorMessage, setErrorMessage] = useState<string>()
 
   const loadCatalog = useCallback(async () => {
+    // Skip loading if cached data is fresh
+    if (homeCache && Date.now() - homeCacheTime < CACHE_TTL_MS) {
+      return
+    }
+
     // Only trigger full visual loading/shimmer if we don't have cached content
     const hasCache = !!homeCache
     if (!hasCache) {
@@ -160,6 +167,7 @@ export function HomePage() {
         upcomingMovies: upcomingData,
         recommended: recData,
       }
+      homeCacheTime = Date.now()
     } catch (err) {
       console.error('Failed to load TMDB catalog:', err)
       // Only show visual error state if we have nothing cached to display
