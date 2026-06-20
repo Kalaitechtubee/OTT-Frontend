@@ -357,7 +357,7 @@ export function DetailPage() {
         }
       }
 
-      // Default prioritization logic: netmirror first, then peachify, then fallback
+      // Default prioritization logic: netmirror first, then peachify, then. fallback
       if (!bestSource) {
         bestSource = details.sources.find((s) => s.provider === 'netmirror')
       }
