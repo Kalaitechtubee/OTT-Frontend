@@ -44,7 +44,7 @@ async function prepareSubtitleUrl(url: string): Promise<string> {
   if (url.startsWith('blob:')) {
     return url
   }
-  
+
   const isSrt = url.toLowerCase().includes('.srt')
   const isVtt = url.toLowerCase().includes('.vtt')
 
@@ -232,10 +232,10 @@ export function PlayerPage() {
     if (!video || subtitleTracks.length > 0) return
 
     const tracks = video.textTracks
-    
+
     const syncTracks = () => {
       let targetIndex = selectedSubtitleTrackId
-      
+
       // Try to restore previous subtitle language if we have one and currently off (-1)
       if (targetIndex === -1 && selectedSubtitleLanguageRef.current && processedSubtitles.length > 0) {
         const matchIdx = processedSubtitles.findIndex(
@@ -297,21 +297,8 @@ export function PlayerPage() {
         playContext.provider as Provider,
         playContext.id,
       )
-
-      // Handle transitioning to embed-type streams (e.g. Server 2 Peachify fallback)
-      if (freshResult && freshResult.streamType === 'embed' && freshResult.embedUrl) {
-        console.log('[PlayerPage] Fresh stream is embed-type, transitioning to embed mode:', freshResult.embedUrl)
-        usePlayerStore.setState({
-          streamType: 'embed',
-          embedUrl: freshResult.embedUrl,
-          streamUrl: freshResult.embedUrl,
-          streams: []
-        })
-        return true
-      }
-
       const freshStreams = freshResult.streams
-      if (!freshStreams || !freshStreams.length) return false
+      if (!freshStreams.length) return false
 
       const qualityToUse = targetQuality ?? selectedQuality
       const match =
@@ -503,7 +490,7 @@ export function PlayerPage() {
       })
       hlsRef.current = hls
       if (typeof window !== 'undefined') {
-        ;(window as any).hls = hls
+        ; (window as any).hls = hls
       }
       hls.attachMedia(video)
       hls.loadSource(effectiveStreamUrl)
@@ -806,7 +793,7 @@ export function PlayerPage() {
         hls.subtitleDisplay = trackId >= 0
         const track = hls.subtitleTracks[trackId]
         selectedSubtitleLanguageRef.current = track ? (track.lang || null) : null
-        
+
         console.log('[Subtitles] Active HLS.js track:', track)
         console.log('[Subtitles] hls.subtitleTrack is now:', hls.subtitleTrack)
         console.log('[Subtitles] hls.subtitleDisplay is now:', hls.subtitleDisplay)
@@ -888,7 +875,7 @@ export function PlayerPage() {
   return (
     <div className="flex min-h-dvh flex-col bg-[#050507] text-white overflow-x-hidden relative">
       {/* Cinematic Ambient Glow behind the player */}
-      <div 
+      <div
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-7xl aspect-video pointer-events-none z-0 opacity-40 md:opacity-65"
         style={{
           background: 'radial-gradient(50% 50% at 50% 50%, rgba(229, 9, 20, 0.12) 0%, rgba(0, 0, 0, 0) 100%)'
@@ -1006,7 +993,6 @@ export function PlayerPage() {
               className={`h-full w-full bg-black border-none ${statusMessage ? 'invisible' : ''}`}
               allow="autoplay; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
-              sandbox="allow-scripts allow-same-origin allow-forms"
             />
           ) : (
             <video
