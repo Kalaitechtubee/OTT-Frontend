@@ -83,12 +83,15 @@ const FALLBACK_SUGGESTIONS: Record<string, string[]> = {
   default: ['pushpa 2', 'kalki 2898 ad', 'rrr', 'leo', 'kgf 2', 'jawan', 'pathaan', 'stree 2', 'animal', 'dune']
 }
 
+// Module-level search cache to survive component unmounts during SPA navigation
+let searchCache: { query: string; results: V2SearchResult[] } | null = null
+
 export function SearchPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const initial = searchParams.get('q') ?? ''
-  const [query, setQuery] = useState(initial)
-  const [results, setResults] = useState<V2SearchResult[]>([])
+  const [query, setQuery] = useState(searchCache?.query ?? initial)
+  const [results, setResults] = useState<V2SearchResult[]>(searchCache?.results ?? [])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -175,8 +178,16 @@ export function SearchPage() {
     if (query.trim().length < 2) {
       setResults([])
       setError(null)
+      searchCache = null
       return
     }
+
+    // Skip API request if query is already cached and loaded
+    if (searchCache && searchCache.query === query.trim()) {
+      setResults(searchCache.results)
+      return
+    }
+
     const controller = new AbortController()
     const t = setTimeout(async () => {
       setLoading(true)
@@ -185,6 +196,7 @@ export function SearchPage() {
         const items = await searchV2(query.trim(), { signal: controller.signal })
         if (controller.signal.aborted) return
         setResults(items)
+        searchCache = { query: query.trim(), results: items }
 
         // Seamless auto-redirect for recommendations or exact search landing
         if (items.length === 1 && autoParam) {
@@ -208,6 +220,7 @@ export function SearchPage() {
           setError('Failed to load search results. Please try again.')
         }
         setResults([])
+        searchCache = null
       } finally {
         if (!controller.signal.aborted) setLoading(false)
       }

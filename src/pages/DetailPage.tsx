@@ -19,6 +19,8 @@ import {
   getStreamV2,
   getDetailsByTmdbId,
   getSeasonEpisodesV2,
+  getSyncCachedDetail,
+  getSyncCachedDetailsByTmdbId,
 } from '@/services/api'
 import { useDownloadStore } from '@/store/downloadStore'
 import { usePlayerStore } from '@/store/playerStore'
@@ -126,10 +128,21 @@ export function DetailPage() {
   const play = usePlayerStore((s) => s.play)
   const startDownload = useDownloadStore((s) => s.startDownload)
 
-  const [details, setDetails] = useState<V2Details | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [playing, setPlaying] = useState(false)
+  // Synchronous cache lookup for instant detail rendering
+  const cachedDetails = (() => {
+    if (tmdbId) {
+      const type = searchParams.get('type') || 'movie'
+      return getSyncCachedDetailsByTmdbId(tmdbId, type, titleParam, yearParam)
+    } else if (provider && id) {
+      return getSyncCachedDetail(provider as Provider, id, titleParam, yearParam, sourcesParam)
+    }
+    return null
+  })()
+
+  const [details, setDetails] = useState<V2Details | null>(cachedDetails)
+  const [loading, setLoading] = useState(!cachedDetails)
   const [downloading, setDownloading] = useState(false)
+  const playing = false
 
   // Audio language states
   const [languages, setLanguages] = useState<LanguageVariant[]>([])
@@ -157,14 +170,15 @@ export function DetailPage() {
     variants?: { id: string; language: string }[]
   } | null>(null)
 
-
-
   const [feedback, setFeedback] = useState<string | null>(null)
   const [trailerKey, setTrailerKey] = useState<string | null>(null)
 
   const [selectedSeason, setSelectedSeason] = useState<number>(1)
   const [episodes, setEpisodes] = useState<any[]>([])
   const [loadingEpisodes, setLoadingEpisodes] = useState(false)
+
+  // Background provider status state
+  const [providerStatuses, setProviderStatuses] = useState<Record<string, 'checking' | 'available' | 'unavailable'>>({})
 
   const activeProvider = provider || details?.provider
   const activeId = id || details?.id
@@ -173,32 +187,58 @@ export function DetailPage() {
     (details && details.sources && details.sources.length > 0)
   )
 
-  // Fetch Details
+  // Fetch Details in the background
   useEffect(() => {
     let cancelled = false
-      ; (async () => {
+    ;(async () => {
+      if (!cachedDetails) {
         setLoading(true)
-        try {
-          let data: V2Details | null = null
-          if (tmdbId) {
-            const type = searchParams.get('type') || 'movie'
-            data = await getDetailsByTmdbId(tmdbId, type, titleParam, yearParam)
-          } else if (provider && id) {
-            data = await getDetailsV2(provider as Provider, id, titleParam, yearParam, sourcesParam)
-          }
-          if (cancelled) return
-          setDetails(data)
-        } catch (err) {
-          if (cancelled) return
-          setFeedback(err instanceof Error ? err.message : 'Failed to load details')
-        } finally {
-          if (!cancelled) setLoading(false)
+      }
+      try {
+        let data: V2Details | null = null
+        if (tmdbId) {
+          const type = searchParams.get('type') || 'movie'
+          data = await getDetailsByTmdbId(tmdbId, type, titleParam, yearParam)
+        } else if (provider && id) {
+          data = await getDetailsV2(provider as Provider, id, titleParam, yearParam, sourcesParam)
         }
-      })()
+        if (cancelled) return
+        setDetails(data)
+      } catch (err) {
+        if (cancelled) return
+        setFeedback(err instanceof Error ? err.message : 'Failed to load details')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
     return () => {
       cancelled = true
     }
-  }, [provider, id, tmdbId, titleParam, yearParam, sourcesParam, searchParams])
+  }, [provider, id, tmdbId, titleParam, yearParam, sourcesParam, searchParams, cachedDetails])
+
+  // Run provider availability checks in the background asynchronously
+  useEffect(() => {
+    if (!details?.sources || details.sources.length === 0) return
+
+    let active = true
+    details.sources.forEach(async (source) => {
+      if (!active) return
+      setProviderStatuses((prev) => ({ ...prev, [source.id]: 'checking' }))
+      try {
+        const res = await getStreamV2(source.provider as Provider, source.id)
+        if (!active) return
+        const isAvail = (res.streamType === 'embed' && !!res.embedUrl) || (res.streams && res.streams.length > 0)
+        setProviderStatuses((prev) => ({ ...prev, [source.id]: isAvail ? 'available' : 'unavailable' }))
+      } catch (err) {
+        if (!active) return
+        setProviderStatuses((prev) => ({ ...prev, [source.id]: 'unavailable' }))
+      }
+    })
+
+    return () => {
+      active = false
+    }
+  }, [details])
 
   // Set default selected season when details are loaded
   useEffect(() => {
@@ -241,100 +281,40 @@ export function DetailPage() {
     }
   }, [details, selectedSeason])
 
-  // Play Episode handler
-  const handlePlayEpisode = async (episode: any) => {
+  // Play Episode handler (navigates to player instantly; handles background resolution)
+  const handlePlayEpisode = (episode: any) => {
     const episodeProvider = episode.provider || activeProvider
     const episodeId = episode.id || activeId
     if (!episodeProvider || !episodeId || !details) {
       setFeedback('Streaming source unavailable for this episode.')
       return
     }
-    setPlaying(true)
-    setFeedback(null)
-    try {
-      const result = await getStreamV2(episodeProvider as Provider, episodeId)
 
-      // ── Embed / iframe stream (e.g. Peachify Server 2) ──────────────────────
-      if (result.streamType === 'embed' && result.embedUrl) {
-        const episodeTitleFormatted = `${details.title} - S${selectedSeason}E${episode.episode_number} - ${episode.name}`
-        play(
-          episodeTitleFormatted,
-          details.poster,
-          { provider: episodeProvider, id: episodeId },
-          result.embedUrl,
-          [],
-          'Embed',
-          [],
-          String(details.tmdbId || details.id),
-          'tv',
-          details.description,
-          'embed',
-          result.embedUrl,
-          (result as any).stream?.variants || [],
-          episodeId,
-          result.embedFallbacks || []
-        )
-        navigate(paths.watch(episodeProvider, episodeId))
-        return
-      }
+    const episodeTitleFormatted = `${details.title} - S${selectedSeason}E${episode.episode_number} - ${episode.name}`
 
-      const streams = result.streams
-      if (!streams.length) {
-        setFeedback('No playback streams available for this episode.')
-        return
-      }
-
-      // Validate episode stream ID
-      if (episodeId && result.subjectId && result.subjectId !== episodeId) {
-        setFeedback('Episode stream unavailable for playback.')
-        return
-      }
-
-      const episodeTitleFormatted = `${details.title} - S${selectedSeason}E${episode.episode_number} - ${episode.name}`
-
-      if (streams.length === 1) {
-        play(
-          episodeTitleFormatted,
-          details.poster,
-          { provider: episodeProvider, id: episodeId },
-          streams[0].url,
-          streams,
-          streams[0].quality,
-          result.subtitles,
-          String(details.tmdbId || details.id),
-          'tv',
-          details.description,
-          null,
-          null,
-          (result as any).stream?.variants,
-          episodeId
-        )
-        navigate(paths.watch(episodeProvider, episodeId))
-      } else {
-        setQualityModal({
-          mode: 'play',
-          streams,
-          title: episodeTitleFormatted,
-          context: { provider: episodeProvider, id: episodeId },
-          subtitles: result.subtitles,
-          variants: (result as any).stream?.variants
-        } as any)
-      }
-    } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Failed to fetch play streams.')
-    } finally {
-      setPlaying(false)
+    // Pass metadata details via query params to show immediate loader themed UI in watcher
+    const query = new URLSearchParams()
+    query.set('title', episodeTitleFormatted)
+    if (details.poster) query.set('poster', details.poster)
+    if (episode.overview || details.description) {
+      query.set('overview', episode.overview || details.description || '')
     }
+    if (details.tmdbId) query.set('tmdbId', String(details.tmdbId))
+    query.set('mediaType', 'tv')
+    if (details.sources && details.sources.length > 0) {
+      const srcStr = details.sources.map((s) => `${s.provider}:${s.id}`).join(',')
+      query.set('sources', srcStr)
+    }
+
+    navigate(`/play/${episodeProvider}/${episodeId}?${query.toString()}`)
   }
 
-  // Play Movie / Stream handler
-  const handlePlay = async () => {
+  // Play Movie / Stream handler (navigates to player instantly; handles background resolution)
+  const handlePlay = () => {
     if (!activeProvider || !activeId || !details) {
       setFeedback('Streaming sources are currently unavailable for this title.')
       return
     }
-    setPlaying(true)
-    setFeedback(null)
 
     let targetProvider = activeProvider
     let targetId = activeId
@@ -344,14 +324,12 @@ export function DetailPage() {
       let bestSource = null
 
       if (selectedLanguage) {
-        // Try to match selected language on netmirror (Server 1) first
         bestSource = details.sources.find(
           (s) =>
             s.provider === 'netmirror' &&
             s.languages?.some((lang) => lang.toLowerCase() === selectedLanguage.language.toLowerCase())
         )
 
-        // If not found, try on peachify (Server 2)
         if (!bestSource) {
           bestSource = details.sources.find(
             (s) =>
@@ -360,13 +338,11 @@ export function DetailPage() {
           )
         }
 
-        // Default match by dubSubjectId if still not found
         if (!bestSource && selectedLanguage.dubSubjectId) {
           bestSource = details.sources.find((s) => s.id === selectedLanguage.dubSubjectId)
         }
       }
 
-      // Default prioritization logic: netmirror first, then peachify, then. fallback
       if (!bestSource) {
         bestSource = details.sources.find((s) => s.provider === 'netmirror')
       }
@@ -384,80 +360,20 @@ export function DetailPage() {
       }
     }
 
-    const expectedSubjectId = dubParam ?? (activeProvider === 'tmdb' ? targetId : activeId)
-
-    try {
-      const result = await getStreamV2(targetProvider as Provider, targetId, details.sources, dubParam)
-
-      // ── Embed / iframe stream (e.g. Peachify Server 2) ──────────────────────
-      if (result.streamType === 'embed' && result.embedUrl) {
-        play(
-          details.title,
-          details.poster,
-          { provider: targetProvider, id: targetId },
-          result.embedUrl,
-          [],
-          'Embed',
-          [],
-          String(details.tmdbId || details.id),
-          details.mediaType,
-          details.description,
-          'embed',
-          result.embedUrl,
-          (result as any).stream?.variants || [],
-          targetId,
-          result.embedFallbacks || []
-        )
-        navigate(paths.watch(targetProvider, targetId))
-        return
-      }
-
-      const streams = result.streams
-      if (!streams.length) {
-        setFeedback('No playback streams available for this title.')
-        return
-      }
-
-      // Validate stream subject matches selected language/source
-      if (expectedSubjectId && result.subjectId && result.subjectId !== expectedSubjectId
-          && targetProvider !== 'peachify') {
-        setFeedback(`${selectedLanguage?.language ?? 'Selected language'} stream unavailable for playback.`)
-        return
-      }
-
-      if (streams.length === 1) {
-        play(
-          details.title,
-          details.poster,
-          { provider: targetProvider, id: targetId },
-          streams[0].url,
-          streams,
-          streams[0].quality,
-          result.subtitles,
-          String(details.tmdbId || details.id),
-          details.mediaType,
-          details.description,
-          null,
-          null,
-          (result as any).stream?.variants,
-          targetId
-        )
-        navigate(paths.watch(targetProvider, targetId))
-      } else {
-        setQualityModal({
-          mode: 'play',
-          streams,
-          title: details.title,
-          context: { provider: targetProvider, id: targetId },
-          subtitles: result.subtitles,
-          variants: (result as any).stream?.variants
-        })
-      }
-    } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Failed to fetch play streams.')
-    } finally {
-      setPlaying(false)
+    // Pass metadata details via query params to show immediate loader themed UI in watcher
+    const query = new URLSearchParams()
+    query.set('title', details.title)
+    if (details.poster) query.set('poster', details.poster)
+    if (details.description) query.set('overview', details.description)
+    if (details.tmdbId) query.set('tmdbId', String(details.tmdbId))
+    if (details.mediaType) query.set('mediaType', details.mediaType)
+    if (dubParam) query.set('dub', dubParam)
+    if (details.sources && details.sources.length > 0) {
+      const srcStr = details.sources.map((s) => `${s.provider}:${s.id}`).join(',')
+      query.set('sources', srcStr)
     }
+
+    navigate(`/play/${targetProvider}/${targetId}?${query.toString()}`)
   }
 
   // Directly trigger download to local device (bypassing the type selection modal)
@@ -796,6 +712,34 @@ export function DetailPage() {
                       {lang.l} {lang.s ? `(${lang.s})` : ''}
                     </span>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Background-loaded active streaming server indicators */}
+            {details.sources && details.sources.length > 0 && (
+              <div className="mt-5 border-t border-white/5 pt-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-mz-secondary">
+                  Streaming Servers
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2.5">
+                  {details.sources.map((src) => {
+                    const status = providerStatuses[src.id] || 'checking'
+                    const statusColors = {
+                      checking: 'text-mz-secondary border-white/10 bg-white/5 animate-pulse',
+                      available: 'text-emerald-400 border-emerald-500/35 bg-emerald-500/10',
+                      unavailable: 'text-rose-400 border-rose-500/35 bg-rose-500/10',
+                    }
+                    return (
+                      <span
+                        key={src.id}
+                        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-bold ${statusColors[status]}`}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${status === 'available' ? 'bg-emerald-400' : status === 'unavailable' ? 'bg-rose-400' : 'bg-mz-secondary/60'}`} />
+                        {src.provider === 'netmirror' ? 'Server 1 (NetMirror)' : src.provider === 'peachify' ? 'Server 2 (Peachify)' : `Server (${src.provider})`}
+                      </span>
+                    )
+                  })}
                 </div>
               </div>
             )}

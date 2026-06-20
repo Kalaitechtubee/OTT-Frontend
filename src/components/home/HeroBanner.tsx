@@ -110,8 +110,6 @@ export function HeroBanner({ items, layout = 'classic', allPosters }: HeroBanner
               const backdrop = item.backdrop || item.poster || ''
               const status = getCardStatus(idx)
               
-              if (status === 'hidden') return null
-
               let statusClass = ''
               let shadowBorderClass = ''
               
@@ -124,6 +122,9 @@ export function HeroBanner({ items, layout = 'classic', allPosters }: HeroBanner
               } else if (status === 'right') {
                 statusClass = 'hero-card-right'
                 shadowBorderClass = 'shadow-2xl border-white/5'
+              } else {
+                statusClass = 'hero-card-hidden'
+                shadowBorderClass = 'border-transparent'
               }
 
               return (

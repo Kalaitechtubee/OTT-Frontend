@@ -48,7 +48,7 @@ function writeSession(key: string, data: unknown, expires: number) {
   }
 }
 
-function getCached<T>(key: string, allowStale = false): T | null {
+export function getCached<T>(key: string, allowStale = false): T | null {
   const mem = memoryCache.get(key)
   if (mem) {
     if (mem.expires > Date.now()) return mem.data as T

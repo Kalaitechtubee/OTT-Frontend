@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams, useParams } from 'react-router-dom'
 import { ArrowLeft, X, AlertCircle, RefreshCw } from 'lucide-react'
 import Hls from 'hls.js'
 import {
@@ -100,32 +100,8 @@ function pickDefaultAudioTrack(tracks: AudioTrackInfo[]): number {
 
 export function PlayerPage() {
   const navigate = useNavigate()
+  const { provider, id } = useParams<{ provider: string; id: string }>()
   const [searchParams] = useSearchParams()
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const hlsRef = useRef<Hls | null>(null)
-  const resumeTimeRef = useRef(0)
-  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const recoveryAttemptsRef = useRef(0)
-  const failedQualitiesRef = useRef<Set<string>>(new Set())
-  const lastPlaybackPositionRef = useRef(0)
-  const isRecoveringRef = useRef(false)
-  const recoveryExhaustedRef = useRef(false)
-  const lastRecoveryAtRef = useRef(0)
-  const recoveryResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const [playbackError, setPlaybackError] = useState<string | null>(null)
-  const [refreshing, setRefreshing] = useState(false)
-  const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const [videoKey, setVideoKey] = useState(0)
-  const [embedFallbackIndex, setEmbedFallbackIndex] = useState(0)
-
-  /* ── Audio / Subtitle / Quality state ── */
-  const [audioTracks, setAudioTracks] = useState<AudioTrackInfo[]>([])
-  const [selectedAudioTrackId, setSelectedAudioTrackId] = useState(-1)
-  const [subtitleTracks, setSubtitleTracks] = useState<SubtitleTrackInfo[]>([])
-  const [selectedSubtitleTrackId, setSelectedSubtitleTrackId] = useState(-1) // -1 = off
-  const hasAutoSelectedAudioRef = useRef(false)
 
   const {
     title,
@@ -147,7 +123,141 @@ export function PlayerPage() {
     variants,
     selectedVariantId,
     setStreamVariant,
+    play,
   } = usePlayerStore()
+
+  const urlOverrideRaw = searchParams.get('url')
+  const urlOverride = useMemo(() => {
+    if (!urlOverrideRaw) return null
+    try {
+      const decoded = decodeURIComponent(urlOverrideRaw)
+      return decoded.startsWith('http') ? decoded : urlOverrideRaw
+    } catch {
+      return urlOverrideRaw
+    }
+  }, [urlOverrideRaw])
+
+  const effectiveStreamUrl = urlOverride ?? streamUrl
+
+  const [resolvingStream, setResolvingStream] = useState(!effectiveStreamUrl)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const hlsRef = useRef<Hls | null>(null)
+  const resumeTimeRef = useRef(0)
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const recoveryAttemptsRef = useRef(0)
+  const failedQualitiesRef = useRef<Set<string>>(new Set())
+  const lastPlaybackPositionRef = useRef(0)
+  const isRecoveringRef = useRef(false)
+  const recoveryExhaustedRef = useRef(false)
+  const lastRecoveryAtRef = useRef(0)
+  const recoveryResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const [playbackError, setPlaybackError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [videoKey, setVideoKey] = useState(0)
+  const [embedFallbackIndex, setEmbedFallbackIndex] = useState(0)
+
+  // Dynamically resolve stream in the background if not pre-loaded (e.g. reload or instant navigation)
+  useEffect(() => {
+    // If the stream URL is already set and matches the active route ID, we don't need to resolve again
+    if (effectiveStreamUrl && playContext?.id === id && playContext?.provider === provider) {
+      setResolvingStream(false)
+      return
+    }
+
+    if (!provider || !id) {
+      navigate(paths.home, { replace: true })
+      return
+    }
+
+    let active = true
+    const resolve = async () => {
+      setResolvingStream(true)
+      setPlaybackError(null)
+      try {
+        const titleParam = searchParams.get('title') || 'Loading Stream...'
+        const posterParam = searchParams.get('poster') || null
+        const overviewParam = searchParams.get('overview') || null
+        const tmdbIdParam = searchParams.get('tmdbId') || null
+        const mediaTypeParam = (searchParams.get('mediaType') as 'movie' | 'tv') || 'movie'
+        const dubParam = searchParams.get('dub') || undefined
+        const sourcesParam = searchParams.get('sources')
+
+        let sourcesList: { provider: string; id: string }[] | undefined = undefined
+        if (sourcesParam) {
+          sourcesList = sourcesParam.split(',').map((s) => {
+            const [p, i] = s.split(':')
+            return { provider: p, id: i }
+          })
+        }
+
+        const res = await getStreamV2(provider as Provider, id, sourcesList, dubParam)
+        if (!active) return
+
+        if (res.streamType === 'embed' && res.embedUrl) {
+          play(
+            titleParam,
+            posterParam,
+            { provider, id },
+            res.embedUrl,
+            [],
+            'Embed',
+            [],
+            tmdbIdParam,
+            mediaTypeParam,
+            overviewParam,
+            'embed',
+            res.embedUrl,
+            (res as any).stream?.variants || [],
+            id,
+            res.embedFallbacks || []
+          )
+        } else if (res.streams && res.streams.length > 0) {
+          play(
+            titleParam,
+            posterParam,
+            { provider, id },
+            res.streams[0].url,
+            res.streams,
+            res.streams[0].quality,
+            res.subtitles,
+            tmdbIdParam,
+            mediaTypeParam,
+            overviewParam,
+            null,
+            null,
+            (res as any).stream?.variants || [],
+            id
+          )
+        } else {
+          setPlaybackError('No playback streams available for this title.')
+        }
+      } catch (err) {
+        if (!active) return
+        setPlaybackError(err instanceof Error ? err.message : 'Failed to fetch stream details.')
+      } finally {
+        if (active) {
+          setResolvingStream(false)
+        }
+      }
+    }
+
+    resolve()
+
+    return () => {
+      active = false
+    }
+  }, [provider, id, effectiveStreamUrl, playContext])
+
+  /* ── Audio / Subtitle / Quality state ── */
+  const [audioTracks, setAudioTracks] = useState<AudioTrackInfo[]>([])
+  const [selectedAudioTrackId, setSelectedAudioTrackId] = useState(-1)
+  const [subtitleTracks, setSubtitleTracks] = useState<SubtitleTrackInfo[]>([])
+  const [selectedSubtitleTrackId, setSelectedSubtitleTrackId] = useState(-1) // -1 = off
+  const hasAutoSelectedAudioRef = useRef(false)
+
   const items = useHistoryStore((s) => s.items)
   const addOrUpdate = useHistoryStore((s) => s.addOrUpdate)
 
@@ -278,18 +388,7 @@ export function PlayerPage() {
     }
   }, [processedSubtitles, selectedSubtitleTrackId, subtitleTracks, videoKey, streamUrl])
 
-  const urlOverrideRaw = searchParams.get('url')
-  const urlOverride = useMemo(() => {
-    if (!urlOverrideRaw) return null
-    try {
-      const decoded = decodeURIComponent(urlOverrideRaw)
-      return decoded.startsWith('http') ? decoded : urlOverrideRaw
-    } catch {
-      return urlOverrideRaw
-    }
-  }, [urlOverrideRaw])
 
-  const effectiveStreamUrl = urlOverride ?? streamUrl
 
   /* ── Quality options for settings panel ── */
   const qualityOptions = useMemo(
@@ -366,10 +465,10 @@ export function PlayerPage() {
 
   /* ── Redirect if no stream ── */
   useEffect(() => {
-    if (!effectiveStreamUrl) {
+    if (!effectiveStreamUrl && !resolvingStream && !playbackError) {
       navigate(paths.home, { replace: true })
     }
-  }, [effectiveStreamUrl, navigate])
+  }, [effectiveStreamUrl, resolvingStream, playbackError, navigate])
 
   /* ── Stop player on unmount (StrictMode-safe) ── */
   useEffect(() => {
@@ -658,6 +757,15 @@ export function PlayerPage() {
           hls.recoverMediaError()
           return
         }
+        if (allEmbedSources.length > 0) {
+          setStatusMessage('Stream error. Switching to fallback embed player...')
+          setTimeout(() => {
+            usePlayerStore.setState({ streamType: 'embed' })
+            setVideoKey((prev) => prev + 1)
+            setStatusMessage(null)
+          }, 1500)
+          return
+        }
         setPlaybackError(
           'Stream URL expired, blocked, or could not be decoded. Open DevTools Console for details.',
         )
@@ -736,6 +844,15 @@ export function PlayerPage() {
 
         recoveryExhaustedRef.current = true
         setStatusMessage(null)
+        if (allEmbedSources.length > 0) {
+          setStatusMessage('Playback error. Switching to fallback embed player...')
+          setTimeout(() => {
+            usePlayerStore.setState({ streamType: 'embed' })
+            setVideoKey((prev) => prev + 1)
+            setStatusMessage(null)
+          }, 1500)
+          return
+        }
         setPlaybackError(mediaErrorMessage(code))
       } catch (err) {
         console.error('Playback recovery error:', err)
@@ -950,8 +1067,7 @@ export function PlayerPage() {
     },
     [streams, streamUrl, setStreamQuality],
   )
-
-  if (!effectiveStreamUrl) return null
+  const showVideoPlaceholder = resolvingStream || !effectiveStreamUrl
 
   const close = () => {
     if (playContext) {
@@ -967,7 +1083,7 @@ export function PlayerPage() {
     : embedUrl
     ? [embedUrl]
     : []
-  const activeEmbedUrl = allEmbedSources[embedFallbackIndex] || embedUrl || effectiveStreamUrl
+  const activeEmbedUrl = allEmbedSources[embedFallbackIndex] || embedUrl || effectiveStreamUrl || ''
 
 
 
@@ -1056,27 +1172,14 @@ export function PlayerPage() {
         )}
 
         <div className="relative flex aspect-video max-h-[calc(100dvh-240px)] w-full max-w-6xl overflow-hidden rounded-2xl border border-white/10 bg-[#070709] shadow-[0_0_80px_rgba(229,9,20,0.18)]">
-          {statusMessage && (
-            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/70 backdrop-blur-md px-4 text-center animate-fade-in">
-              <div className="mb-4 flex h-14 w-14 animate-spin items-center justify-center rounded-full bg-mz-primary/15 border border-mz-primary/20 text-mz-primary shadow-[0_0_15px_rgba(229,9,20,0.25)]">
-                <RefreshCw className="h-6 w-6" />
-              </div>
-              <p className="text-sm font-bold text-white tracking-wide">
-                {statusMessage}
-              </p>
-            </div>
-          )}
-
           {playbackError ? (
-            <div className="flex h-full w-full flex-col items-center justify-center bg-black/60 backdrop-blur-md px-6 py-12 text-center animate-fade-in">
-              <div className="mb-4 flex h-16 w-16 animate-pulse items-center justify-center rounded-full bg-mz-error/15 border border-mz-error/25 text-mz-error shadow-[0_0_20px_rgba(239,68,68,0.2)]">
-                <AlertCircle className="h-8 w-8" />
+            <div className="flex flex-col items-center justify-center gap-4 bg-black/60 backdrop-blur-md p-6 text-center w-full h-full">
+              <AlertCircle className="h-10 w-10 text-mz-primary" />
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-white">Playback Error</p>
+                <p className="text-xs text-mz-secondary">{playbackError}</p>
               </div>
-              <h3 className="font-display text-xl font-black text-white">Playback Error</h3>
-              <p className="mt-2 max-w-md text-sm font-medium text-mz-secondary/90 leading-relaxed">
-                {playbackError}
-              </p>
-              <div className="mt-8 flex flex-wrap justify-center gap-3">
+              <div className="mt-2 flex gap-3">
                 <button
                   type="button"
                   disabled={refreshing}
@@ -1095,63 +1198,75 @@ export function PlayerPage() {
                 </button>
               </div>
             </div>
-          ) : streamType === 'embed' ? (
-            <div className="relative h-full w-full bg-black">
-              <iframe
-                key={`embed_${embedFallbackIndex}`}
-                src={activeEmbedUrl}
-                className={`h-full w-full border-none ${statusMessage ? 'invisible' : ''}`}
-                allow="autoplay; fullscreen; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-                referrerPolicy="no-referrer"
-                sandbox={activeEmbedUrl.includes('peachify') ? undefined : "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"}
-              />
-              {/* Source switcher toolbar — shown only when multiple embed sources are available */}
-              {allEmbedSources.length > 1 && (
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-2xl border border-white/10 bg-black/80 backdrop-blur-md px-4 py-2 shadow-xl">
-                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest mr-1">Source</span>
-                  {allEmbedSources.map((src, idx) => {
-                    const srcHost = (() => { try { return new URL(src).hostname.replace('www.', '') } catch { return `Source ${idx + 1}` } })()
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => { setEmbedFallbackIndex(idx) }}
-                        className={`rounded-xl px-3 py-1.5 text-[10px] font-bold transition-all duration-200 cursor-pointer ${
-                          idx === embedFallbackIndex
-                            ? 'bg-mz-primary text-white shadow-[0_0_12px_rgba(229,9,20,0.4)]'
-                            : 'text-white/60 hover:bg-white/10 hover:text-white'
-                        }`}
-                      >
-                        {srcHost}
-                      </button>
-                    )
-                  })}
+          ) : (
+            <>
+              {(showVideoPlaceholder || statusMessage) && (
+                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black/80 backdrop-blur-md">
+                  <RefreshCw className="h-10 w-10 animate-spin text-mz-primary" />
+                  <p className="text-sm font-bold text-white">
+                    {statusMessage || 'Resolving Stream...'}
+                  </p>
                 </div>
               )}
-            </div>
-          ) : (
-            <video
-              ref={videoRef}
-              key={`${streamUrl}_${videoKey}`}
-              controls
-              autoPlay
-              playsInline
-              preload="auto"
-              className={`h-full w-full bg-black object-contain ${statusMessage ? 'invisible' : ''}`}
-            >
-              {/* Backend subtitles as <track> elements (fallback when HLS.js has no embedded subs) */}
-              {useTrackElements &&
-                processedSubtitles.map((sub, idx) => (
-                  <track
-                    key={idx}
-                    kind={sub.kind || 'subtitles'}
-                    label={sub.label}
-                    srcLang={sub.language}
-                    src={sub.url}
+              {streamType === 'embed' ? (
+                <div className="relative h-full w-full bg-black">
+                  <iframe
+                    key={`embed_${embedFallbackIndex}`}
+                    src={activeEmbedUrl || undefined}
+                    className={`h-full w-full border-none ${statusMessage ? 'invisible' : ''}`}
+                    allow="autoplay; fullscreen; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                    referrerPolicy="no-referrer"
+                    sandbox={activeEmbedUrl.includes('peachify') ? undefined : "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"}
                   />
-                ))}
-            </video>
+                  {/* Source switcher toolbar — shown only when multiple embed sources are available */}
+                  {allEmbedSources.length > 1 && (
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-2xl border border-white/10 bg-black/80 backdrop-blur-md px-4 py-2 shadow-xl">
+                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest mr-1">Source</span>
+                      {allEmbedSources.map((src, idx) => {
+                        const srcHost = (() => { try { return new URL(src).hostname.replace('www.', '') } catch { return `Source ${idx + 1}` } })()
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => { setEmbedFallbackIndex(idx) }}
+                            className={`rounded-xl px-3 py-1.5 text-[10px] font-bold transition-all duration-200 cursor-pointer ${
+                              idx === embedFallbackIndex
+                                ? 'bg-mz-primary text-white shadow-[0_0_12px_rgba(229,9,20,0.4)]'
+                                : 'text-white/60 hover:bg-white/10 hover:text-white'
+                            }`}
+                          >
+                            {srcHost}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <video
+                  ref={videoRef}
+                  key={`${streamUrl}_${videoKey}`}
+                  controls
+                  autoPlay
+                  playsInline
+                  preload="auto"
+                  className={`h-full w-full bg-black object-contain ${statusMessage ? 'invisible' : ''}`}
+                >
+                  {/* Backend subtitles as <track> elements (fallback when HLS.js has no embedded subs) */}
+                  {useTrackElements &&
+                    processedSubtitles.map((sub, idx) => (
+                      <track
+                        key={idx}
+                        kind={sub.kind || 'subtitles'}
+                        label={sub.label}
+                        srcLang={sub.language}
+                        src={sub.url}
+                      />
+                    ))}
+                </video>
+              )}
+            </>
           )}
         </div>
       </div>

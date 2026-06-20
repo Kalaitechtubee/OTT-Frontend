@@ -415,3 +415,10 @@ video::cue {
   border-radius: 6px !important;
   padding: 4px 10px !important;
 }
+
+.hero-card-hidden {
+  transform: scale(0.5);
+  z-index: 0;
+  opacity: 0;
+  pointer-events: none;
+}

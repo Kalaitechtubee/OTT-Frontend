@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '@/core/config/env'
-import { ApiHttpError, buildApiUrl, fetchJson } from '@/services/apiClient'
+import { ApiHttpError, buildApiUrl, fetchJson, getCached } from '@/services/apiClient'
 import type { Provider, V2Details, V2SearchResult, V2StreamResult } from '@/types/v2'
 
 export { ApiHttpError }
@@ -194,4 +194,35 @@ export async function checkHealth(): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+// ─── Synchronous Details Cache Retrievers ──────────────────────────────────────
+export function getSyncCachedDetail(
+  provider: Provider,
+  id: string,
+  title?: string,
+  year?: string,
+  sources?: string,
+): V2Details | null {
+  const params: Record<string, string> = {}
+  if (title) params.title = title
+  if (year) params.year = year
+  if (sources) params.sources = sources
+  const url = buildApiUrl(`/api/v2/details/${provider}/${id}`, params)
+  const hit = getCached<{ results: V2Details }>(url)
+  return hit?.results ?? null
+}
+
+export function getSyncCachedDetailsByTmdbId(
+  tmdbId: string,
+  type: string = 'movie',
+  title?: string,
+  year?: string,
+): V2Details | null {
+  const params: Record<string, string> = { type }
+  if (title) params.title = title
+  if (year) params.year = year
+  const url = buildApiUrl(`/api/v2/details/tmdb/${tmdbId}`, params)
+  const hit = getCached<{ results: V2Details }>(url)
+  return hit?.results ?? null
 }
