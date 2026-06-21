@@ -43,7 +43,18 @@ function getAvailableLanguages(details: V2Details | null): LanguageVariant[] {
 
   if (sources.length > 0) {
     for (const src of sources) {
-      if (src.languages && src.languages.length > 0) {
+      if (src.variants && src.variants.length > 0) {
+        for (const variant of src.variants) {
+          list.push({
+            dubSubjectId: variant.id,
+            language: variant.language,
+            isOriginal:
+              variant.id === details.id ||
+              variant.language.toLowerCase().includes('original') ||
+              variant.language.toLowerCase().includes('multi'),
+          })
+        }
+      } else if (src.languages && src.languages.length > 0) {
         for (const lang of src.languages) {
           list.push({
             dubSubjectId: src.id,
@@ -192,30 +203,36 @@ export function DetailPage() {
     (details && details.sources && details.sources.length > 0)
   )
 
+  const isDownloadSupported = !!(
+    details &&
+    details.sources &&
+    details.sources.some((s) => s.available && s.downloadSupported)
+  )
+
   // Fetch Details in the background
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      if (!cachedDetails) {
-        setLoading(true)
-      }
-      try {
-        let data: V2Details | null = null
-        if (tmdbId) {
-          const type = searchParams.get('type') || 'movie'
-          data = await getDetailsByTmdbId(tmdbId, type, titleParam, yearParam)
-        } else if (provider && id) {
-          data = await getDetailsV2(provider as Provider, id, titleParam, yearParam, sourcesParam)
+      ; (async () => {
+        if (!cachedDetails) {
+          setLoading(true)
         }
-        if (cancelled) return
-        setDetails(data)
-      } catch (err) {
-        if (cancelled) return
-        setFeedback(err instanceof Error ? err.message : 'Failed to load details')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
+        try {
+          let data: V2Details | null = null
+          if (tmdbId) {
+            const type = searchParams.get('type') || 'movie'
+            data = await getDetailsByTmdbId(tmdbId, type, titleParam, yearParam)
+          } else if (provider && id) {
+            data = await getDetailsV2(provider as Provider, id, titleParam, yearParam, sourcesParam)
+          }
+          if (cancelled) return
+          setDetails(data)
+        } catch (err) {
+          if (cancelled) return
+          setFeedback(err instanceof Error ? err.message : 'Failed to load details')
+        } finally {
+          if (!cancelled) setLoading(false)
+        }
+      })()
     return () => {
       cancelled = true
     }
@@ -290,6 +307,9 @@ export function DetailPage() {
       const srcStr = details.sources.map((s) => `${s.provider}:${s.id}`).join(',')
       query.set('sources', srcStr)
     }
+    if (selectedLanguage?.dubSubjectId) {
+      query.set('dub', selectedLanguage.dubSubjectId)
+    }
 
     navigate(`/play/${episodeProvider}/${episodeId}?${query.toString()}`)
   }
@@ -312,6 +332,9 @@ export function DetailPage() {
     if (details.sources && details.sources.length > 0) {
       const srcStr = details.sources.map((s) => `${s.provider}:${s.id}`).join(',')
       query.set('sources', srcStr)
+    }
+    if (selectedLanguage?.dubSubjectId) {
+      query.set('dub', selectedLanguage.dubSubjectId)
     }
 
     if (explicitSource) {
@@ -746,12 +769,18 @@ export function DetailPage() {
 
               <button
                 type="button"
-                disabled={downloading || !hasStreams}
+                disabled={downloading || !hasStreams || !isDownloadSupported}
                 onClick={handleDownloadClick}
                 className="btn-secondary w-full sm:w-auto px-7 py-4 text-base"
               >
                 <Download className="h-5 w-5" />
-                {downloading ? 'Preparing…' : hasStreams ? 'Download' : 'Unavailable'}
+                {downloading
+                  ? 'Preparing…'
+                  : !hasStreams
+                    ? 'Unavailable'
+                    : !isDownloadSupported
+                      ? 'Coming Soon'
+                      : 'Download'}
               </button>
 
               {details.trailer && (
@@ -879,8 +908,8 @@ export function DetailPage() {
                             disabled={playing || !hasEpSource}
                             onClick={() => handlePlayEpisode(ep)}
                             className={`inline-flex items-center gap-1.5 rounded-full px-4.5 py-1.5 text-xs font-bold transition duration-300 cursor-pointer ${hasEpSource
-                                ? 'bg-mz-primary/15 border border-mz-primary/30 text-white hover:bg-mz-primary hover:border-mz-primary shadow-sm hover:scale-[1.02]'
-                                : 'bg-white/5 text-white/45 border border-white/5 cursor-not-allowed'
+                              ? 'bg-mz-primary/15 border border-mz-primary/30 text-white hover:bg-mz-primary hover:border-mz-primary shadow-sm hover:scale-[1.02]'
+                              : 'bg-white/5 text-white/45 border border-white/5 cursor-not-allowed'
                               }`}
                           >
                             <Play className="h-3 w-3 fill-current" />

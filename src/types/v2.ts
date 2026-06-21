@@ -64,6 +64,8 @@ export interface V2Details {
     serverIndex?: number
     /** Optional pre-resolved embed URL for embed-type providers */
     embedUrl?: string | null
+    downloadSupported?: boolean
+    variants?: { id: string; language: string }[]
   }[]
   audioLanguages?: string[]
   seasons?: {
@@ -115,6 +117,7 @@ export interface V2StreamResult {
   embedUrl?: string
   /** Ordered list of fallback embed URLs to try if the primary embedUrl fails */
   embedFallbacks?: string[]
+  variants?: { id: string; language: string }[]
   stream?: {
     variants?: { id: string; language: string }[]
     embedFallbacks?: string[]

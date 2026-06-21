@@ -92,6 +92,9 @@ export async function getStreamV2(
   id: string,
   sources?: { provider: string; id: string }[],
   dub?: string,
+  season?: number,
+  episode?: number,
+  variant?: string,
 ): Promise<V2StreamResult> {
   try {
     const params: Record<string, string> = {}
@@ -100,7 +103,14 @@ export async function getStreamV2(
     }
     if (dub) {
       params.dub = dub
+      params.variant = dub
     }
+    if (variant) {
+      params.variant = variant
+    }
+    if (season !== undefined) params.season = String(season)
+    if (episode !== undefined) params.episode = String(episode)
+
     const data = await request<V2StreamResult>(
       `/api/v2/stream/${provider}/${id}`,
       params,
@@ -127,11 +137,13 @@ export async function resolveStream(
   type: 'movie' | 'tv' = 'movie',
   season?: number,
   episode?: number,
+  variant?: string,
 ): Promise<V2StreamResult> {
   try {
     const params: Record<string, string> = { type }
     if (season !== undefined) params.season = String(season)
     if (episode !== undefined) params.episode = String(episode)
+    if (variant) params.variant = variant
 
     const data = await request<V2StreamResult>(
       `/api/v2/stream/tmdb/${tmdbId}`,
@@ -293,4 +305,66 @@ export function getSyncCachedDetailsByTmdbId(
   const url = buildApiUrl(`/api/v2/details/tmdb/${tmdbId}`, params)
   const hit = getCached<{ results: V2Details }>(url)
   return hit?.results ?? null
+}
+
+// ─── Watch History API Requests ────────────────────────────────────────────────
+export async function getHistoryV2(): Promise<any[] | null> {
+  const url = buildApiUrl('/api/v2/history')
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json' }
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.items || []
+  } catch (err) {
+    console.error('Failed to get watch history from backend:', err)
+    return null
+  }
+}
+
+export async function saveHistoryV2(item: any): Promise<boolean> {
+  const url = buildApiUrl('/api/v2/history')
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(item)
+    })
+    return res.ok
+  } catch (err) {
+    console.error('Failed to save watch history to backend:', err)
+    return false
+  }
+}
+
+export async function removeHistoryV2(id: string | number, type: string): Promise<boolean> {
+  const url = buildApiUrl(`/api/v2/history/${type}/${id}`)
+  try {
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: { Accept: 'application/json' }
+    })
+    return res.ok
+  } catch (err) {
+    console.error('Failed to delete watch history item from backend:', err)
+    return false
+  }
+}
+
+export async function clearHistoryV2(): Promise<boolean> {
+  const url = buildApiUrl('/api/v2/history')
+  try {
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: { Accept: 'application/json' }
+    })
+    return res.ok
+  } catch (err) {
+    console.error('Failed to clear watch history from backend:', err)
+    return false
+  }
 }

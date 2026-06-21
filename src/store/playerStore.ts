@@ -53,7 +53,7 @@ interface PlayerState {
   /** Brief overview */
   overview: string | null
   /** Stream play type: embed, hls, or mp4 */
-  streamType: 'embed' | 'hls' | 'mp4' | null
+  streamType: 'embed' | 'hls' | 'mp4' | 'native' | null
   /** Embed URL if streamType is embed */
   embedUrl: string | null
   /** Ordered list of fallback embed URLs to try if primary embedUrl fails */
@@ -74,7 +74,7 @@ interface PlayerState {
     tmdbId?: string | null,
     mediaType?: 'movie' | 'tv' | null,
     overview?: string | null,
-    streamType?: 'embed' | 'hls' | 'mp4' | null,
+    streamType?: 'embed' | 'hls' | 'mp4' | 'native' | null,
     embedUrl?: string | null,
     variants?: { id: string; language: string }[],
     selectedVariantId?: string | null,
@@ -87,7 +87,7 @@ interface PlayerState {
     quality: string,
     streams: V2Stream[],
     subtitles?: V2Subtitle[],
-    streamType?: 'embed' | 'hls' | 'mp4' | null,
+    streamType?: 'embed' | 'hls' | 'mp4' | 'native' | null,
     embedUrl?: string | null
   ) => void
   setProgress: (n: number) => void

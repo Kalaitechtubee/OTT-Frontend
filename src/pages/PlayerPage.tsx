@@ -9,6 +9,7 @@ import {
 } from '@/components/common/PlayerSettingsPanel'
 import { usePlayerStore } from '@/store/playerStore'
 import { useHistoryStore } from '@/store/historyStore'
+import { useThemeStore } from '@/store/themeStore'
 import { paths } from '@/routes/paths'
 import { getStreamV2, resolveStream } from '@/services/api'
 
@@ -211,7 +212,7 @@ export function PlayerPage() {
             if (season === undefined) season = parseInt(tvMatch[2], 10)
             if (episode === undefined) episode = parseInt(tvMatch[3], 10)
           }
-          res = await resolveStream(tmdbTarget, mediaTypeParam, season, episode)
+          res = await resolveStream(tmdbTarget, mediaTypeParam, season, episode, dubParam)
         } else {
           // Explicit provider: user manually selected a server (e.g. tapped 'Server 2').
           // Route directly to that provider — no pipeline involved.
@@ -219,6 +220,53 @@ export function PlayerPage() {
         }
 
         if (!active) return
+
+        const activeVariants = res.variants || (res as any).stream?.variants || []
+        const activeSelectedVariantId = res.selectedVariantId || dubParam || id
+
+        // Populate audio and subtitle tracks from the backend stream object if available
+        const backendAudioTracks = res.stream?.audioTracks
+        if (backendAudioTracks && Array.isArray(backendAudioTracks)) {
+          const mapped = backendAudioTracks.map((t: any, idx: number) => ({
+            id: idx,
+            language: t.language || 'und',
+            label: t.name || t.language || `Track ${idx + 1}`
+          }))
+          setAudioTracks(mapped)
+          let targetId = -1
+          if (selectedAudioLanguageRef.current) {
+            const match = mapped.find(
+              (t) => t.language.toLowerCase() === selectedAudioLanguageRef.current?.toLowerCase()
+            )
+            if (match) targetId = match.id
+          }
+          if (targetId === -1) {
+            targetId = pickDefaultAudioTrack(mapped)
+          }
+          if (targetId >= 0) {
+            setSelectedAudioTrackId(targetId)
+            const track = mapped[targetId]
+            selectedAudioLanguageRef.current = track.language || null
+          }
+        }
+
+        const backendSubtitleTracks = res.stream?.subtitleTracks
+        if (backendSubtitleTracks && Array.isArray(backendSubtitleTracks)) {
+          const mapped = backendSubtitleTracks.map((t: any, idx: number) => ({
+            id: idx,
+            language: t.language || 'und',
+            label: t.name || t.language || `Subtitle ${idx + 1}`
+          }))
+          setSubtitleTracks(mapped)
+          let targetSubId = -1
+          if (selectedSubtitleLanguageRef.current) {
+            const match = mapped.find(
+              (t) => t.language.toLowerCase() === selectedSubtitleLanguageRef.current?.toLowerCase()
+            )
+            if (match) targetSubId = match.id
+          }
+          setSelectedSubtitleTrackId(targetSubId)
+        }
 
         if (res.streamType === 'embed' && res.embedUrl) {
           play(
@@ -234,8 +282,8 @@ export function PlayerPage() {
             overviewParam,
             'embed',
             res.embedUrl,
-            (res as any).stream?.variants || [],
-            id,
+            activeVariants,
+            activeSelectedVariantId,
             res.embedFallbacks || []
           )
         } else if (res.streams && res.streams.length > 0) {
@@ -250,10 +298,10 @@ export function PlayerPage() {
             tmdbIdParam,
             mediaTypeParam,
             overviewParam,
+            res.streamType || null,
             null,
-            null,
-            (res as any).stream?.variants || [],
-            id
+            activeVariants,
+            activeSelectedVariantId
           )
         } else {
           setPlaybackError('No playback streams available for this title.')
@@ -428,12 +476,79 @@ export function PlayerPage() {
   ): Promise<boolean> => {
     if (!playContext) return false
     try {
-      const freshResult = await getStreamV2(
-        playContext.provider as Provider,
-        playContext.id,
-      )
+      let freshResult
+      if (playContext.provider === 'tmdb') {
+        const seasonParam = searchParams.get('season')
+        const episodeParam = searchParams.get('episode')
+        let season = seasonParam ? parseInt(seasonParam, 10) : undefined
+        let episode = episodeParam ? parseInt(episodeParam, 10) : undefined
+
+        const compositeMatch = String(id).match(/^(\d+)[-:](\d+)[-:](\d+)$/)
+        if (compositeMatch) {
+          if (season === undefined) season = parseInt(compositeMatch[2], 10)
+          if (episode === undefined) episode = parseInt(compositeMatch[3], 10)
+        }
+
+        freshResult = await resolveStream(
+          tmdbId || playContext.id,
+          mediaType || 'movie',
+          season,
+          episode,
+          selectedVariantId || undefined
+        )
+      } else {
+        freshResult = await getStreamV2(
+          playContext.provider as Provider,
+          playContext.id,
+        )
+      }
+
       const freshStreams = freshResult.streams
       if (!freshStreams.length) return false
+
+      // Update audio and subtitle tracks if returned
+      const freshAudioTracks = freshResult.stream?.audioTracks
+      if (freshAudioTracks && Array.isArray(freshAudioTracks)) {
+        const mapped = freshAudioTracks.map((t: any, idx: number) => ({
+          id: idx,
+          language: t.language || 'und',
+          label: t.name || t.language || `Track ${idx + 1}`
+        }))
+        setAudioTracks(mapped)
+        let targetId = -1
+        if (selectedAudioLanguageRef.current) {
+          const match = mapped.find(
+            (t) => t.language.toLowerCase() === selectedAudioLanguageRef.current?.toLowerCase()
+          )
+          if (match) targetId = match.id
+        }
+        if (targetId === -1) {
+          targetId = pickDefaultAudioTrack(mapped)
+        }
+        if (targetId >= 0) {
+          setSelectedAudioTrackId(targetId)
+          const track = mapped[targetId]
+          selectedAudioLanguageRef.current = track.language || null
+        }
+      }
+
+      const freshSubtitleTracks = freshResult.stream?.subtitleTracks
+      if (freshSubtitleTracks && Array.isArray(freshSubtitleTracks)) {
+        const mapped = freshSubtitleTracks.map((t: any, idx: number) => ({
+          id: idx,
+          language: t.language || 'und',
+          label: t.name || t.language || `Subtitle ${idx + 1}`
+        }))
+        setSubtitleTracks(mapped)
+        let targetSubId = -1
+        if (selectedSubtitleLanguageRef.current) {
+          const match = mapped.find(
+            (t) => t.language.toLowerCase() === selectedSubtitleLanguageRef.current?.toLowerCase()
+          )
+          if (match) targetSubId = match.id
+        }
+        setSelectedSubtitleTrackId(targetSubId)
+      }
 
       const qualityToUse = targetQuality ?? selectedQuality
       const match =
@@ -558,9 +673,32 @@ export function PlayerPage() {
       }
     }
 
+    const onSyncForced = () => {
+      if (!video.duration || video.currentTime === 0) return
+      const historyMovie: Movie = {
+        id: Number(tmdbId || 0),
+        title: title ?? 'V2 Playback',
+        overview: overview ?? '',
+        type: mediaType ?? 'movie',
+        posterPath: poster ?? undefined,
+        rating: 0,
+        releaseDate: '',
+      }
+      addOrUpdate({
+        movie: historyMovie,
+        progress: video.currentTime,
+        duration: video.duration,
+        playContext: playContext ?? undefined,
+      }, true)
+    }
+
     video.addEventListener('timeupdate', onTime)
+    video.addEventListener('pause', onSyncForced)
+
     return () => {
       video.removeEventListener('timeupdate', onTime)
+      video.removeEventListener('pause', onSyncForced)
+      onSyncForced()
       if (recoveryResetTimerRef.current) {
         clearTimeout(recoveryResetTimerRef.current)
       }
@@ -711,6 +849,16 @@ export function PlayerPage() {
         hls.subtitleTrack = targetSubId
         hls.subtitleDisplay = targetSubId >= 0
         setSelectedSubtitleTrackId(targetSubId)
+
+        // ── Quality level selection ──
+        if (selectedQuality && hls.levels.length > 0) {
+          const height = parseInt(selectedQuality, 10)
+          const idx = hls.levels.findIndex((l) => l.height === height)
+          if (idx !== -1) {
+            console.log(`[HLS.js] Setting initial quality level index ${idx} for quality ${selectedQuality}`)
+            hls.currentLevel = idx
+          }
+        }
       })
 
       /* ── AUDIO_TRACKS_UPDATED: Live updates ── */
@@ -990,13 +1138,13 @@ export function PlayerPage() {
             }
             console.log(`  Track ${i} (${tracks[i].label}): mode set to ${tracks[i].mode}`)
           }
-          const sub = processedSubtitles[trackId]
+          const sub = subtitleTracks[trackId] || processedSubtitles[trackId]
           selectedSubtitleLanguageRef.current = sub ? (sub.language || null) : null
-          console.log('[Subtitles] Selected subtitle url:', sub ? sub.url : 'none')
+          console.log('[Subtitles] Selected subtitle language:', selectedSubtitleLanguageRef.current)
         }
       }
     },
-    [processedSubtitles],
+    [subtitleTracks, processedSubtitles],
   )
 
   /* ─── Audio Language Variant change handler ─── */
@@ -1013,19 +1161,98 @@ export function PlayerPage() {
       setPlaybackError(null)
 
       try {
-        const result = await getStreamV2(
-          playContext.provider as Provider,
-          variantId
-        )
+        const seasonParam = searchParams.get('season')
+        const episodeParam = searchParams.get('episode')
+        let season = seasonParam ? parseInt(seasonParam, 10) : undefined
+        let episode = episodeParam ? parseInt(episodeParam, 10) : undefined
+
+        const compositeMatch = String(id).match(/^(\d+)[-:](\d+)[-:](\d+)$/)
+        if (compositeMatch) {
+          if (season === undefined) season = parseInt(compositeMatch[2], 10)
+          if (episode === undefined) episode = parseInt(compositeMatch[3], 10)
+        }
+
+        let result
+        const activeProvider = playContext.provider
+        if (activeProvider === 'tmdb') {
+          result = await resolveStream(
+            tmdbId || playContext.id,
+            mediaType || 'movie',
+            season,
+            episode,
+            variantId
+          )
+        } else {
+          result = await getStreamV2(
+            activeProvider as Provider,
+            variantId,
+            undefined,
+            undefined,
+            season,
+            episode
+          )
+        }
+
+        // Populate audio and subtitle tracks from the backend stream object if available
+        const backendAudioTracks = result.stream?.audioTracks
+        if (backendAudioTracks && Array.isArray(backendAudioTracks)) {
+          const mapped = backendAudioTracks.map((t: any, idx: number) => ({
+            id: idx,
+            language: t.language || 'und',
+            label: t.name || t.language || `Track ${idx + 1}`
+          }))
+          setAudioTracks(mapped)
+          let targetId = -1
+          if (selectedAudioLanguageRef.current) {
+            const match = mapped.find(
+              (t) => t.language.toLowerCase() === selectedAudioLanguageRef.current?.toLowerCase()
+            )
+            if (match) targetId = match.id
+          }
+          if (targetId === -1) {
+            targetId = pickDefaultAudioTrack(mapped)
+          }
+          if (targetId >= 0) {
+            setSelectedAudioTrackId(targetId)
+            const track = mapped[targetId]
+            selectedAudioLanguageRef.current = track.language || null
+          }
+        } else {
+          setAudioTracks([])
+          setSelectedAudioTrackId(-1)
+        }
+
+        const backendSubtitleTracks = result.stream?.subtitleTracks
+        if (backendSubtitleTracks && Array.isArray(backendSubtitleTracks)) {
+          const mapped = backendSubtitleTracks.map((t: any, idx: number) => ({
+            id: idx,
+            language: t.language || 'und',
+            label: t.name || t.language || `Subtitle ${idx + 1}`
+          }))
+          setSubtitleTracks(mapped)
+          let targetSubId = -1
+          if (selectedSubtitleLanguageRef.current) {
+            const match = mapped.find(
+              (t) => t.language.toLowerCase() === selectedSubtitleLanguageRef.current?.toLowerCase()
+            )
+            if (match) targetSubId = match.id
+          }
+          setSelectedSubtitleTrackId(targetSubId)
+        } else {
+          setSubtitleTracks([])
+          setSelectedSubtitleTrackId(-1)
+        }
+
+        const resolvedVariantId = result.selectedVariantId || variantId
 
         // Support both embed and native streams
         if (result.streamType === 'embed' && result.embedUrl) {
           resumeTimeRef.current = savedPos
           setVideoKey((prev) => prev + 1)
-          
+
           setStreamVariant(
             result.embedUrl,
-            variantId,
+            resolvedVariantId,
             'Embed',
             [],
             [],
@@ -1053,11 +1280,11 @@ export function PlayerPage() {
 
         setStreamVariant(
           match.url,
-          variantId,
+          resolvedVariantId,
           match.quality,
           freshStreams,
           result.subtitles,
-          'hls',
+          result.streamType || 'hls',
           null
         )
         setStatusMessage(null)
@@ -1067,14 +1294,28 @@ export function PlayerPage() {
         setStatusMessage(null)
       }
     },
-    [playContext, selectedQuality, variants, setStreamVariant]
+    [playContext, selectedQuality, variants, setStreamVariant, searchParams, id, tmdbId, mediaType]
   )
 
   /* ─── Quality change handler ─── */
   const handleQualityChange = useCallback(
     (value: string) => {
       const stream = streams.find((item) => item.quality === value)
-      if (!stream || stream.url === streamUrl) return
+      if (!stream) return
+
+      const hls = hlsRef.current
+      if (hls && hls.levels.length > 0) {
+        const height = parseInt(value, 10)
+        const idx = hls.levels.findIndex((l) => l.height === height)
+        if (idx !== -1) {
+          console.log(`[PlayerPage] Quality switch (HLS.js level): matching level index ${idx} found for height ${height}`)
+          hls.currentLevel = idx
+          setStreamQuality(streamUrl || '', value)
+          return
+        }
+      }
+
+      if (stream.url === streamUrl) return
 
       const video = videoRef.current
       resumeTimeRef.current = video?.currentTime ?? 0
@@ -1104,13 +1345,30 @@ export function PlayerPage() {
     }
   }
 
+  const primaryColorHex = useThemeStore((s) => s.colors.primary).replace('#', '')
+
   // Compute the active embed URL (cycles through fallbacks on user request)
   const allEmbedSources = embedFallbacks && embedFallbacks.length > 0
     ? embedFallbacks
     : embedUrl
-    ? [embedUrl]
-    : []
-  const activeEmbedUrl = allEmbedSources[embedFallbackIndex] || embedUrl || effectiveStreamUrl || ''
+      ? [embedUrl]
+      : []
+  const rawActiveEmbedUrl = allEmbedSources[embedFallbackIndex] || embedUrl || effectiveStreamUrl || ''
+
+  const activeEmbedUrl = useMemo(() => {
+    if (!rawActiveEmbedUrl) return ''
+    if (rawActiveEmbedUrl.includes('peachify.top') || rawActiveEmbedUrl.includes('eat-peach.sbs')) {
+      try {
+        const urlObj = new URL(rawActiveEmbedUrl)
+        urlObj.searchParams.set('accent', primaryColorHex)
+        return urlObj.toString()
+      } catch {
+        const separator = rawActiveEmbedUrl.includes('?') ? '&' : '?'
+        return `${rawActiveEmbedUrl}${separator}accent=${primaryColorHex}`
+      }
+    }
+    return rawActiveEmbedUrl
+  }, [rawActiveEmbedUrl, primaryColorHex])
 
 
 
@@ -1258,7 +1516,7 @@ export function PlayerPage() {
                             if (host.includes('vidsrc')) return 'VidSrc'
                             if (host.includes('autoembed')) return 'AutoEmbed'
                             if (host.includes('embed.su')) return 'EmbedSU'
-                            
+
                             const parts = host.split('.')
                             const name = parts.length > 1 ? parts[parts.length - 2] : host
                             return name.charAt(0).toUpperCase() + name.slice(1)
@@ -1271,11 +1529,10 @@ export function PlayerPage() {
                             key={idx}
                             type="button"
                             onClick={() => { setEmbedFallbackIndex(idx) }}
-                            className={`rounded-xl px-3 py-1.5 text-[10px] font-bold transition-all duration-200 cursor-pointer ${
-                              idx === embedFallbackIndex
+                            className={`rounded-xl px-3 py-1.5 text-[10px] font-bold transition-all duration-200 cursor-pointer ${idx === embedFallbackIndex
                                 ? 'bg-mz-primary text-white shadow-[0_0_12px_rgba(229,9,20,0.4)]'
                                 : 'text-white/60 hover:bg-white/10 hover:text-white'
-                            }`}
+                              }`}
                           >
                             {srcHost}
                           </button>
