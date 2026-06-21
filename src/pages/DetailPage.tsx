@@ -21,6 +21,7 @@ import {
   getSeasonEpisodesV2,
   getSyncCachedDetail,
   getSyncCachedDetailsByTmdbId,
+  resolveDownload,
 } from '@/services/api'
 
 import { useDownloadStore } from '@/store/downloadStore'
@@ -330,64 +331,47 @@ export function DetailPage() {
 
 
   // Directly trigger download to local device (bypassing the type selection modal)
+  // ARCHITECTURE RULE: Provider selection for downloads is the backend's responsibility.
+  // This handler calls resolveDownload(tmdbId) — the backend pipeline decides which
+  // provider handles the download (NetMirror first; Peachify is embed-only and skipped).
   const handleDownloadClick = async () => {
-    if (!activeProvider || !activeId || !details) {
+    if (!details) {
       setFeedback('Streaming sources are currently unavailable for this title.')
       return
     }
+    const tmdbTarget = String(details.tmdbId || details.id)
+    if (!tmdbTarget) {
+      setFeedback('Streaming sources are currently unavailable for this title.')
+      return
+    }
+
     setDownloading(true)
     setFeedback(null)
 
-    let targetProvider = activeProvider
-    let targetId = activeId
-    let dubParam: string | undefined = undefined
-
-    if (selectedLanguage && selectedLanguage.dubSubjectId && details.sources) {
-      const match = details.sources.find(s => s.id === selectedLanguage.dubSubjectId)
-      if (match) {
-        targetProvider = match.provider
-        targetId = match.id
-        dubParam = match.id
-      }
-    }
-
-    if (targetProvider === 'tmdb' && details.sources && details.sources.length > 0) {
-      targetProvider = details.sources[0].provider
-      targetId = details.sources[0].id
-    }
-
-    // Peachify is embed-only and doesn't support downloads. Failover to Netmirror if available.
-    if ((targetProvider === 'peachify' || targetProvider === 'tmdb') && details.sources && details.sources.length > 0) {
-      const alternative = details.sources.find(s => s.provider !== 'peachify')
-      if (alternative) {
-        targetProvider = alternative.provider
-        targetId = alternative.id
-        if (dubParam && !details.sources.find(s => s.id === dubParam && s.provider === targetProvider)) {
-          dubParam = undefined
-        }
-      }
-    }
-
-    const expectedSubjectId = dubParam ?? (activeProvider === 'tmdb' ? targetId : activeId)
+    // Determine variant ID from selected language if available
+    const variantId = selectedLanguage?.dubSubjectId && selectedLanguage.dubSubjectId !== ''
+      ? selectedLanguage.dubSubjectId
+      : undefined
 
     try {
-      const result = await getStreamV2(targetProvider as Provider, targetId, details.sources, dubParam)
+      // Backend decides the provider — frontend has zero provider-selection logic here.
+      const result = await resolveDownload(
+        tmdbTarget,
+        (details.mediaType as 'movie' | 'tv') || 'movie',
+        undefined,
+        undefined,
+        variantId
+      )
       const streams = result.streams
-      if (!streams.length) {
+      if (!streams || !streams.length) {
         setFeedback('No download streams available for this title.')
-        return
-      }
-
-      // Validate stream subject matches selected language/source
-      if (expectedSubjectId && result.subjectId && result.subjectId !== expectedSubjectId) {
-        setFeedback(`${selectedLanguage?.language ?? 'Selected language'} stream unavailable for download.`)
         return
       }
 
       setQualityModal({
         mode: 'download_device',
         streams,
-        context: { provider: targetProvider, id: targetId },
+        context: { provider: result.selectedProvider || result.provider || 'netmirror', id: tmdbTarget },
         title: details.title,
       } as any)
     } catch (err) {
@@ -430,35 +414,10 @@ export function DetailPage() {
     const isOffline = mode === 'download_offline'
     const resolution = parseV2Quality(stream.quality)
 
-    let targetProvider = activeProvider
-    let targetId = activeId
-
-    if (selectedLanguage && selectedLanguage.dubSubjectId && details.sources) {
-      const match = details.sources.find(s => s.id === selectedLanguage.dubSubjectId)
-      if (match) {
-        targetProvider = match.provider
-        targetId = match.id
-      }
-    }
-
-    if (targetContext) {
-      targetProvider = targetContext.provider
-      targetId = targetContext.id
-    }
-
-    if (targetProvider === 'tmdb' && details.sources && details.sources.length > 0) {
-      targetProvider = details.sources[0].provider
-      targetId = details.sources[0].id
-    }
-
-    // Peachify is embed-only and doesn't support downloads. Failover to Netmirror if available.
-    if ((targetProvider === 'peachify' || targetProvider === 'tmdb') && details.sources && details.sources.length > 0) {
-      const alternative = details.sources.find(s => s.provider !== 'peachify')
-      if (alternative) {
-        targetProvider = alternative.provider
-        targetId = alternative.id
-      }
-    }
+    // ARCHITECTURE RULE: targetContext is already resolved by the backend download pipeline.
+    // No provider-selection logic here — the backend already chose the correct provider.
+    const downloadProvider = targetContext.provider
+    const downloadId = targetContext.id
 
     setFeedback('Starting download...')
     const ok = await startDownload({
@@ -469,8 +428,8 @@ export function DetailPage() {
       resolution,
       language: selectedLanguage?.language ?? 'Original',
       isOffline,
-      provider: targetProvider,
-      id: targetId,
+      provider: downloadProvider,
+      id: downloadId,
       dub: selectedLanguage?.dubSubjectId || undefined,
     })
 

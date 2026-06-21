@@ -145,7 +145,41 @@ export async function resolveStream(
   }
 }
 
+// ─── Backend-controlled download pipeline (backend picks provider automatically) ─
+/**
+ * Calls the backend's deterministic sequential download pipeline.
+ * The backend — NOT the frontend — decides which provider to use for downloads.
+ * Provider order: NetMirror first (Peachify is embed-only and is automatically skipped).
+ *
+ * ARCHITECTURE RULE: Use this for ALL download scenarios.
+ * NEVER call getStreamV2(provider, id) with a frontend-chosen provider for downloads.
+ * The backend guarantees: NetMirror is always attempted first, and Peachify is
+ * only used as a fallback if it ever gains download support.
+ */
+export async function resolveDownload(
+  tmdbId: string,
+  type: 'movie' | 'tv' = 'movie',
+  season?: number,
+  episode?: number,
+  variant?: string,
+): Promise<V2StreamResult> {
+  try {
+    const params: Record<string, string> = { type }
+    if (season !== undefined) params.season = String(season)
+    if (episode !== undefined) params.episode = String(episode)
+    if (variant) params.variant = variant
 
+    const data = await request<V2StreamResult>(
+      `/api/v2/download/tmdb/${tmdbId}`,
+      params,
+      { ttlMs: STREAM_TTL_MS, skipCache: true, retries: 1 },
+    )
+    return data ?? { success: false, available: false, streams: [], subtitles: [] }
+  } catch (err) {
+    if (err instanceof ApiHttpError) throw err
+    return { success: false, available: false, streams: [], subtitles: [] }
+  }
+}
 
 // ─── TMDB List Proxies ────────────────────────────────────────────────────────
 export async function getTmdbList(
