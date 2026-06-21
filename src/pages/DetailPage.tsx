@@ -16,7 +16,6 @@ import { Shimmer } from '@/components/common/Shimmer'
 import { ErrorState } from '@/components/common/ErrorState'
 import {
   getDetailsV2,
-  getStreamV2,
   getDetailsByTmdbId,
   getSeasonEpisodesV2,
   getSyncCachedDetail,

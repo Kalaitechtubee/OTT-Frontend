@@ -118,9 +118,12 @@ export interface V2StreamResult {
   /** Ordered list of fallback embed URLs to try if the primary embedUrl fails */
   embedFallbacks?: string[]
   variants?: { id: string; language: string }[]
+  selectedVariantId?: string | null
   stream?: {
     variants?: { id: string; language: string }[]
     embedFallbacks?: string[]
+    audioTracks?: { id: string; name: string; language: string; default?: boolean }[]
+    subtitleTracks?: { id: string; name: string; language: string; default?: boolean }[]
   }
 }
 
