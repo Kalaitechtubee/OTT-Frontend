@@ -83,8 +83,8 @@ export function HeroBanner({ items, layout = 'classic', allPosters }: HeroBanner
     // 3D Curved Stack (Cover Flow layout) for Movies/TV Pages
     return (
       <section className="relative w-full overflow-hidden bg-mz-background pt-8 pb-12">
-        {/* Ambient Dynamic Blur Background */}
-        <div className="absolute inset-0 z-0 h-[85%] overflow-hidden pointer-events-none">
+        {/* Ambient Dynamic Blur Background (Hidden on mobile to save GPU compositing/filter resources) */}
+        <div className="absolute inset-0 z-0 h-[85%] overflow-hidden pointer-events-none hidden md:block">
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-mz-background/80 to-mz-background z-10" />
           <div className="absolute inset-0 bg-mz-background/40 z-10" />
           {items.map((item, idx) => {
@@ -98,6 +98,7 @@ export function HeroBanner({ items, layout = 'classic', allPosters }: HeroBanner
                 className={`absolute inset-0 h-full w-full object-cover blur-3xl transition-opacity duration-1000 ease-in-out ${
                   isActive ? 'opacity-[0.25] scale-105' : 'opacity-0 scale-100'
                 }`}
+                decoding="async"
               />
             )
           })}
@@ -137,6 +138,7 @@ export function HeroBanner({ items, layout = 'classic', allPosters }: HeroBanner
                     src={backdrop}
                     alt={item.title}
                     className="h-full w-full object-cover"
+                    decoding="async"
                   />
                   
                   {status !== 'active' && (
@@ -298,13 +300,14 @@ export function HeroBanner({ items, layout = 'classic', allPosters }: HeroBanner
                 return (
                   <div
                     key={`poster-${colIdx}-${rowIdx}`}
-                    className="relative w-full aspect-square shrink-0 rounded-[20px] overflow-hidden bg-mz-card border border-white/5 shadow-[0_15px_35px_rgba(0,0,0,0.85)] transition-transform duration-500 hover:scale-110 hover:shadow-[0_0_25px_rgba(229,9,20,0.45)] hover:border-mz-primary/45 hover:z-50 pointer-events-auto"
+                    className="relative w-full aspect-square shrink-0 rounded-[20px] overflow-hidden bg-mz-card border border-white/5 shadow-[0_15px_35px_rgba(0,0,0,0.85)] transition-transform duration-500 md:hover:scale-110 md:hover:shadow-[0_0_25px_rgba(229,9,20,0.45)] md:hover:border-mz-primary/45 md:hover:z-50 pointer-events-auto"
                   >
                     <img
                       src={posterUrl}
                       alt=""
                       className="h-full w-full object-cover brightness-90 contrast-105 saturate-110 select-none"
                       loading="lazy"
+                      decoding="async"
                       onError={(e) => {
                         // Suppress/fallback on loading error
                         ;(e.target as HTMLImageElement).src = 'https://image.tmdb.org/t/p/w342/qJ2tW6j374W7t23mU8z5t3mQ8z5.jpg'

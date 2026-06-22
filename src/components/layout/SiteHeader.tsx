@@ -50,7 +50,7 @@ export function SiteHeader() {
 
   return (
     <header className={`sticky top-0 z-50 border-b transition-all duration-300 ${isScrolled
-        ? 'border-white/8 bg-mz-background/95 backdrop-blur-xl shadow-lg shadow-black/40'
+        ? 'border-white/8 bg-mz-background/95 max-md:bg-mz-background backdrop-blur-xl max-md:backdrop-blur-none shadow-lg shadow-black/40'
         : 'border-transparent bg-transparent'
       }`}>
       <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-4 px-5 py-3 sm:px-8 lg:px-10">
@@ -143,7 +143,7 @@ export function SiteHeader() {
       >
         {/* Backdrop overlay */}
         <div
-          className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+          className="absolute inset-0 bg-black/85"
           onClick={() => setIsDrawerOpen(false)}
         />
 

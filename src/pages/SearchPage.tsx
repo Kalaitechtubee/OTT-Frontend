@@ -256,7 +256,7 @@ export function SearchPage() {
         {/* Premium Glassmorphic Search Bar */}
         <div className="mt-8 max-w-3xl">
           <form onSubmit={(e) => e.preventDefault()}>
-            <div className="relative flex items-center gap-3.5 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 backdrop-blur-md transition-all duration-300 focus-within:border-mz-primary/60 focus-within:bg-white/[0.08] focus-within:shadow-[0_0_25px_rgba(229,9,20,0.15)]">
+            <div className="relative flex items-center gap-3.5 rounded-2xl border border-white/10 bg-white/5 max-md:bg-zinc-900/90 px-5 py-4 backdrop-blur-md max-md:backdrop-blur-none transition-all duration-300 focus-within:border-mz-primary/60 focus-within:bg-white/[0.08] focus-within:shadow-[0_0_25px_rgba(229,9,20,0.15)]">
               <Search className="h-5 w-5 text-mz-secondary shrink-0" />
               <input
                 type="text"
@@ -324,7 +324,7 @@ export function SearchPage() {
 
         {/* Error State */}
         {error && (
-          <div className="mt-10 max-w-3xl rounded-2xl border border-mz-error/30 bg-mz-error/10 p-5 text-mz-error flex items-start gap-3.5 backdrop-blur-md">
+          <div className="mt-10 max-w-3xl rounded-2xl border border-mz-error/30 bg-mz-error/10 max-md:bg-zinc-950 p-5 text-mz-error flex items-start gap-3.5 backdrop-blur-md max-md:backdrop-blur-none">
             <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold text-white">Search Error</p>
@@ -344,7 +344,7 @@ export function SearchPage() {
 
         {/* Empty State */}
         {!loading && !error && query.length >= 2 && results.length === 0 && (
-          <div className="mt-16 flex flex-col items-center justify-center text-center p-10 rounded-2xl bg-white/5 border border-white/5 max-w-md mx-auto backdrop-blur-md">
+          <div className="mt-16 flex flex-col items-center justify-center text-center p-10 rounded-2xl bg-white/5 max-md:bg-zinc-900/95 border border-white/5 max-w-md mx-auto backdrop-blur-md max-md:backdrop-blur-none">
             <AlertCircle className="h-9 w-9 text-mz-secondary/40 mb-3" />
             <p className="font-semibold text-white text-base">No matches found</p>
             <p className="mt-2 text-sm text-mz-secondary leading-relaxed">

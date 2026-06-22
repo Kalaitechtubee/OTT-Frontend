@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Play, Star } from 'lucide-react'
 import { paths } from '@/routes/paths'
@@ -22,6 +22,7 @@ export function PosterCard({
   const isLarge = variant === 'large'
   const isGrid = variant === 'grid'
   const [imgFailed, setImgFailed] = useState(false)
+  const [imgLoaded, setImgLoaded] = useState(false)
 
   // V2 already returns full URLs
   const img = isTrending
@@ -50,6 +51,12 @@ export function PosterCard({
         sources: result.sources,
       })
 
+  useEffect(() => {
+    setImgLoaded(false)
+  }, [img])
+
+  const imgKey = img
+
   return (
     <Link
       to={detailLink}
@@ -63,16 +70,19 @@ export function PosterCard({
             </span>
           )}
           <div
-            className={`relative z-10 overflow-hidden rounded-xl bg-mz-card border border-white/8 transition-all duration-300 group-hover:scale-[1.04] group-hover:border-mz-primary/60 group-hover:shadow-[0_12px_28px_rgba(225,29,72,0.35)] ${
+            className={`relative z-10 overflow-hidden rounded-xl bg-mz-card border border-white/8 transition-all duration-300 md:group-hover:scale-[1.04] md:group-hover:border-mz-primary/60 md:group-hover:shadow-[0_12px_28px_rgba(225,29,72,0.35)] ${
               isTrending ? 'aspect-video w-full' : 'aspect-[2/3] w-full'
             }`}
           >
             {img && !imgFailed ? (
               <img
+                key={imgKey}
                 src={img}
                 alt={result.title}
-                className="h-full w-full object-cover"
+                className={`h-full w-full object-cover fade-in-image ${imgLoaded ? 'loaded' : ''}`}
                 loading="lazy"
+                decoding="async"
+                onLoad={() => setImgLoaded(true)}
                 onError={() => setImgFailed(true)}
               />
             ) : (
@@ -82,8 +92,8 @@ export function PosterCard({
             )}
 
             {/* Interactive play overlay */}
-            <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-300 z-20">
-              <div className="flex h-11 w-11 scale-75 group-hover:scale-100 items-center justify-center rounded-full bg-mz-primary/95 text-white shadow-lg transition-transform duration-300 shadow-mz-primary/30">
+            <div className="absolute inset-0 bg-black/45 opacity-0 md:group-hover:opacity-100 flex items-center justify-center transition-all duration-300 z-20">
+              <div className="flex h-11 w-11 scale-75 md:group-hover:scale-100 items-center justify-center rounded-full bg-mz-primary/95 text-white shadow-lg transition-transform duration-300 shadow-mz-primary/30">
                 <Play className="h-5 w-5 fill-white ml-0.5" />
               </div>
             </div>
@@ -92,7 +102,7 @@ export function PosterCard({
             {isTrending && (
               <>
                 <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/95 via-black/50 to-transparent z-15 pointer-events-none" />
-                <div className="absolute bottom-0 left-0 right-0 p-3 z-20 flex flex-col justify-end translate-y-1 group-hover:translate-y-0 transition-transform duration-300 pointer-events-none">
+                <div className="absolute bottom-0 left-0 right-0 p-3 z-20 flex flex-col justify-end translate-y-0 md:translate-y-1 md:group-hover:translate-y-0 transition-transform duration-300 pointer-events-none">
                   <p className="line-clamp-1 text-sm sm:text-base font-extrabold text-white leading-tight">
                     {result.title}
                   </p>
@@ -114,7 +124,7 @@ export function PosterCard({
 
             {/* B. Large card layout (portrait with glassmorphic bottom overlay slide-up footer) */}
             {isLarge && (
-              <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-md border-t border-white/5 p-2.5 z-20 translate-y-1.5 group-hover:translate-y-0 transition-transform duration-300 pointer-events-none">
+              <div className="absolute bottom-0 left-0 right-0 bg-black/60 max-md:bg-zinc-950/90 backdrop-blur-md max-md:backdrop-blur-none border-t border-white/5 p-2.5 z-20 translate-y-0 md:translate-y-1.5 md:group-hover:translate-y-0 transition-transform duration-300 pointer-events-none">
                 <p className="line-clamp-1 text-xs sm:text-sm font-extrabold text-white leading-tight">
                   {result.title}
                 </p>
@@ -153,7 +163,7 @@ export function PosterCard({
         {/* D. Standard rail items layout (details below the image container) */}
         {!isTrending && !isLarge && (
           <div className="mt-2.5 px-0.5 min-w-0">
-            <p className="line-clamp-1 text-[15px] sm:text-base font-extrabold text-white/95 group-hover:text-mz-primary transition-colors">
+            <p className="line-clamp-1 text-[15px] sm:text-base font-extrabold text-white/95 md:group-hover:text-mz-primary transition-colors">
               {result.title}
             </p>
             <p className="mt-0.5 text-xs sm:text-sm text-mz-secondary capitalize">

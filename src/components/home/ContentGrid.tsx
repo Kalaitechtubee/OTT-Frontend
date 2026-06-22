@@ -20,28 +20,37 @@ export function ContentGrid({
   const scrollRef = useRef<HTMLDivElement>(null)
   const [showLeft, setShowLeft] = useState(false)
   const [showRight, setShowRight] = useState(true)
+  const scrollTimeoutRef = useRef<number | null>(null)
 
   const checkScroll = () => {
-    if (scrollRef.current) {
-      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current
-      setShowLeft(scrollLeft > 10)
-      setShowRight(scrollLeft + clientWidth < scrollWidth - 15)
+    if (scrollTimeoutRef.current) {
+      cancelAnimationFrame(scrollTimeoutRef.current)
     }
+    scrollTimeoutRef.current = requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current
+        setShowLeft(scrollLeft > 10)
+        setShowRight(scrollLeft + clientWidth < scrollWidth - 15)
+      }
+    })
   }
 
   useEffect(() => {
     const el = scrollRef.current
     if (el) {
-      el.addEventListener('scroll', checkScroll)
+      el.addEventListener('scroll', checkScroll, { passive: true })
       checkScroll()
       // Wait a bit for images/elements to render and measure again
       const timer = setTimeout(checkScroll, 200)
-      window.addEventListener('resize', checkScroll)
+      window.addEventListener('resize', checkScroll, { passive: true })
 
       return () => {
         el.removeEventListener('scroll', checkScroll)
         clearTimeout(timer)
         window.removeEventListener('resize', checkScroll)
+        if (scrollTimeoutRef.current) {
+          cancelAnimationFrame(scrollTimeoutRef.current)
+        }
       }
     }
   }, [items])
@@ -70,11 +79,21 @@ export function ContentGrid({
       </PageContainer>
 
       <div className="group/rail relative px-1">
+        {/* Safe side overlays replacing mask-gradient-x on mobile/desktop without compositing issues */}
+        <div 
+          className="pointer-events-none absolute left-0 top-0 bottom-6 w-10 sm:w-16 bg-gradient-to-r from-mz-background to-transparent z-25 transition-opacity duration-300" 
+          style={{ opacity: showLeft ? 1 : 0 }}
+        />
+        <div 
+          className="pointer-events-none absolute right-0 top-0 bottom-6 w-10 sm:w-16 bg-gradient-to-l from-mz-background to-transparent z-25 transition-opacity duration-300"
+          style={{ opacity: showRight ? 1 : 0 }}
+        />
+
         {/* Left Arrow Button */}
         <button
           onClick={() => handleScroll('left')}
-          className={`absolute left-4 top-[40%] -translate-y-1/2 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white backdrop-blur-md transition-all duration-300 shadow-lg cursor-pointer ${showLeft
-              ? 'opacity-0 group-hover/rail:opacity-100 hover:scale-110 hover:bg-black/90 hover:border-mz-primary/50'
+          className={`absolute left-4 top-[40%] -translate-y-1/2 z-30 hidden md:flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white backdrop-blur-md transition-all duration-300 shadow-lg cursor-pointer ${showLeft
+              ? 'opacity-0 md:group-hover/rail:opacity-100 md:hover:scale-110 md:hover:bg-black/90 md:hover:border-mz-primary/50'
               : 'opacity-0 pointer-events-none'
             }`}
           aria-label="Scroll left"
@@ -85,8 +104,8 @@ export function ContentGrid({
         {/* Right Arrow Button */}
         <button
           onClick={() => handleScroll('right')}
-          className={`absolute right-4 top-[40%] -translate-y-1/2 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white backdrop-blur-md transition-all duration-300 shadow-lg cursor-pointer ${showRight
-              ? 'opacity-0 group-hover/rail:opacity-100 hover:scale-110 hover:bg-black/90 hover:border-mz-primary/50'
+          className={`absolute right-4 top-[40%] -translate-y-1/2 z-30 hidden md:flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white backdrop-blur-md transition-all duration-300 shadow-lg cursor-pointer ${showRight
+              ? 'opacity-0 md:group-hover/rail:opacity-100 md:hover:scale-110 md:hover:bg-black/90 md:hover:border-mz-primary/50'
               : 'opacity-0 pointer-events-none'
             }`}
           aria-label="Scroll right"
@@ -96,7 +115,7 @@ export function ContentGrid({
 
         <div
           ref={scrollRef}
-          className="no-scrollbar mask-gradient-x scroll-rail-bleed flex gap-4 overflow-x-auto pb-6 pt-4 scroll-smooth"
+          className="no-scrollbar scroll-rail-bleed flex gap-4 overflow-x-auto pb-6 pt-4 scroll-smooth"
         >
           {items.map((item, i) => (
             <PosterCard
