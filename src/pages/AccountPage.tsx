@@ -1,19 +1,23 @@
 import { Link } from 'react-router-dom'
 import {
   ChevronRight,
-  Globe,
   HardDrive,
   Info,
   Smartphone,
   User,
 } from 'lucide-react'
 import { PageContainer } from '@/components/layout/PageContainer'
-import { useAppStore, isSupportedLanguage } from '@/store/appStore'
-import { paths } from '@/routes/paths'
+import type { LucideIcon } from 'lucide-react'
+
+interface SettingRow {
+  icon: LucideIcon
+  label: string
+  description: string
+  to?: string
+  onClick?: () => void
+}
 
 export function AccountPage() {
-  const language = useAppStore((s) => s.preferredLanguage)
-
   const clearCache = () => {
     try {
       const keys = Object.keys(localStorage).filter(
@@ -26,23 +30,7 @@ export function AccountPage() {
     }
   }
 
-  const prefSettings = [
-    {
-      icon: Globe,
-      label: 'Content Language',
-      description: language || 'Not set — affects catalog filters',
-      to: `${paths.language}?from=account`,
-    },
-    ...(language && isSupportedLanguage(language)
-      ? [
-          {
-            icon: Globe,
-            label: `${language} Hub`,
-            description: 'Trending, movies, series, dubbed & new releases',
-            to: paths.languageHub(language),
-          },
-        ]
-      : []),
+  const prefSettings: SettingRow[] = [
     {
       icon: HardDrive,
       label: 'Clear Watch History',
@@ -51,7 +39,7 @@ export function AccountPage() {
     },
   ]
 
-  const infoSettings = [
+  const infoSettings: SettingRow[] = [
     {
       icon: Smartphone,
       label: 'Download Mobile App',

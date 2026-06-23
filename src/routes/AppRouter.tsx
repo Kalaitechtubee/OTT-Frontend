@@ -1,6 +1,6 @@
 import React, { Suspense } from 'react'
 import type { ReactNode } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { MainLayout } from '@/layouts/MainLayout'
 import { WatchLayout } from '@/layouts/WatchLayout'
 import { ScrollRestoration } from '@/components/common/ScrollRestoration'
@@ -37,53 +37,82 @@ function RouteLoader() {
   )
 }
 
+function AppRoutes() {
+  const location = useLocation()
+  
+  // Inspect if we have background location state for modal routing
+  const state = location.state as { backgroundLocation?: Location } | null
+  const backgroundLocation = state?.backgroundLocation
+
+  return (
+    <Suspense fallback={<RouteLoader />}>
+      {/* Renders the underlying browse/detail screen. 
+          When player is opened with background state, freeze location at the background location */}
+      <Routes location={backgroundLocation || location}>
+        <Route path={paths.boot} element={<BootPage />} />
+        <Route path={paths.language} element={<LanguagePage />} />
+
+        <Route
+          element={
+            <BootGate>
+              <MainLayout />
+            </BootGate>
+          }
+        >
+          <Route path={paths.home} element={<HomePage />} />
+          <Route path={paths.movies} element={<MoviesPage />} />
+          <Route path={paths.tvSeries} element={<TvSeriesPage />} />
+          <Route path={paths.search} element={<SearchPage />} />
+          <Route path={paths.library} element={<LibraryPage />} />
+          <Route path={paths.account} element={<AccountPage />} />
+          <Route path="/language/:lang" element={<LanguageHubPage />} />
+          <Route
+            path="/language/:lang/:category"
+            element={<LanguageCategoryPage />}
+          />
+
+          {/* Details page moved inside MainLayout to persist SiteHeader & SiteFooter */}
+          <Route path="/title/:provider/:id" element={<DetailPage />} />
+          <Route path="/title/tmdb/:tmdbId" element={<DetailPage />} />
+        </Route>
+
+        {/* Watch page direct loads (renders independently outside MainLayout) */}
+        <Route element={<WatchLayout />}>
+          <Route path="/play/:provider/:id" element={<PlayerPage />} />
+        </Route>
+
+        {/* Legacy redirects */}
+        <Route path="/app" element={<Navigate to={paths.home} replace />} />
+        <Route path="/app/search" element={<Navigate to={paths.search} replace />} />
+        <Route path="/app/library" element={<Navigate to={paths.library} replace />} />
+        <Route path="/app/profile" element={<Navigate to={paths.account} replace />} />
+
+        <Route path="*" element={<Navigate to={paths.home} replace />} />
+      </Routes>
+
+      {/* Render PlayerPage as a full-screen absolute modal on top of browse screen */}
+      {backgroundLocation && (
+        <Routes>
+          <Route
+            path="/play/:provider/:id"
+            element={
+              <div className="fixed inset-0 z-100 bg-black animate-in fade-in duration-300">
+                <PlayerPage />
+              </div>
+            }
+          />
+        </Routes>
+      )}
+    </Suspense>
+  )
+}
+
 export function AppRouter() {
   return (
     <BrowserRouter>
       <ScrollRestoration />
-      <Suspense fallback={<RouteLoader />}>
-        <Routes>
-          <Route path={paths.boot} element={<BootPage />} />
-          <Route path={paths.language} element={<LanguagePage />} />
-
-          <Route
-            element={
-              <BootGate>
-                <MainLayout />
-              </BootGate>
-            }
-          >
-            <Route path={paths.home} element={<HomePage />} />
-            <Route path={paths.movies} element={<MoviesPage />} />
-            <Route path={paths.tvSeries} element={<TvSeriesPage />} />
-            <Route path={paths.search} element={<SearchPage />} />
-            <Route path={paths.library} element={<LibraryPage />} />
-            <Route path={paths.account} element={<AccountPage />} />
-            <Route path="/language/:lang" element={<LanguageHubPage />} />
-            <Route
-              path="/language/:lang/:category"
-              element={<LanguageCategoryPage />}
-            />
-          </Route>
-
-          {/* V2: detail page — /title/:provider/:id or /title/tmdb/:tmdbId */}
-          <Route path="/title/:provider/:id" element={<DetailPage />} />
-          <Route path="/title/tmdb/:tmdbId" element={<DetailPage />} />
-
-          {/* V2: watch page — /play/:provider/:id */}
-          <Route element={<WatchLayout />}>
-            <Route path="/play/:provider/:id" element={<PlayerPage />} />
-          </Route>
-
-          {/* Legacy redirects */}
-          <Route path="/app" element={<Navigate to={paths.home} replace />} />
-          <Route path="/app/search" element={<Navigate to={paths.search} replace />} />
-          <Route path="/app/library" element={<Navigate to={paths.library} replace />} />
-          <Route path="/app/profile" element={<Navigate to={paths.account} replace />} />
-
-          <Route path="*" element={<Navigate to={paths.home} replace />} />
-        </Routes>
-      </Suspense>
+      <AppRoutes />
     </BrowserRouter>
   )
 }
+

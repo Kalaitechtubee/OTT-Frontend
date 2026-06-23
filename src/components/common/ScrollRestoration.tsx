@@ -1,35 +1,45 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-
-const scrollPositions = new Map<string, number>()
+import { useScrollStore } from '@/store/scrollStore'
 
 export function ScrollRestoration() {
   const location = useLocation()
+  const setPageScroll = useScrollStore((s) => s.setPageScroll)
+  const getPageScroll = useScrollStore((s) => s.getPageScroll)
 
   useEffect(() => {
     const handleScroll = () => {
-      scrollPositions.set(location.pathname, window.scrollY)
+      // Save scroll position for the current pathname
+      setPageScroll(location.pathname, window.scrollY)
     }
 
     window.addEventListener('scroll', handleScroll, { passive: true })
     return () => {
       window.removeEventListener('scroll', handleScroll)
     }
-  }, [location.pathname])
+  }, [location.pathname, setPageScroll])
 
   useEffect(() => {
-    const saved = scrollPositions.get(location.pathname) ?? 0
+    const saved = getPageScroll(location.pathname)
 
-    // Use a small timeout to let React layout/shimmer updates render and expand page height
+    // Scroll immediately, but also trigger a minor deferred scroll to catch dynamic list heights.
+    // Since we use a global catalog cache, content is rendered immediately,
+    // making restoration highly reliable.
+    window.scrollTo({
+      top: saved,
+      behavior: 'instant' as any
+    })
+
     const timer = setTimeout(() => {
       window.scrollTo({
         top: saved,
-        behavior: 'instant' as any // Use instant scrolling for seamless state updates
+        behavior: 'instant' as any
       })
     }, 60)
 
     return () => clearTimeout(timer)
-  }, [location.pathname])
+  }, [location.pathname, getPageScroll])
 
   return null
 }
+

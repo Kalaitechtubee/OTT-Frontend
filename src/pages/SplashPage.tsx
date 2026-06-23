@@ -8,7 +8,6 @@ import { paths } from '@/routes/paths'
 
 export function BootPage() {
   const navigate = useNavigate()
-  const preferredLanguage = useAppStore((s) => s.preferredLanguage)
   const setSplashDone = useAppStore((s) => s.setSplashDone)
 
   useEffect(() => {
@@ -17,12 +16,12 @@ export function BootPage() {
       await new Promise((r) => setTimeout(r, 1200))
       setSplashDone(true)
       navigate(
-        preferredLanguage ? paths.home : paths.language,
+        paths.home,
         { replace: true },
       )
     }
     boot()
-  }, [navigate, preferredLanguage, setSplashDone])
+  }, [navigate, setSplashDone])
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-mz-background px-6">

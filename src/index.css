@@ -222,12 +222,23 @@
   }
 
   .shimmer {
-    background: linear-gradient(90deg,
-        var(--mz-card) 0%,
-        color-mix(in srgb, var(--mz-primary) 10%, var(--mz-card)) 50%,
-        var(--mz-card) 100%);
-    background-size: 200% 100%;
-    animation: shimmer 1.4s ease-in-out infinite;
+    /* Flutter-equivalent: Shimmer.fromColors(
+         baseColor: Color(0xFF1E1E24),         -- AppColors.card
+         highlightColor: Colors.white.withOpacity(0.08)
+       )
+    */
+    background: linear-gradient(
+      105deg,
+      #1e1e24 0%,
+      #1e1e24 35%,
+      rgba(255, 255, 255, 0.055) 48%,
+      rgba(255, 255, 255, 0.09)  50%,
+      rgba(255, 255, 255, 0.055) 52%,
+      #1e1e24 65%,
+      #1e1e24 100%
+    );
+    background-size: 300% 100%;
+    animation: shimmer 1.5s linear infinite;
   }
 
   .no-scrollbar {
@@ -281,13 +292,8 @@
 }
 
 @keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-
-  100% {
-    background-position: -200% 0;
-  }
+  0%   { background-position: 150% 0; }
+  100% { background-position: -150% 0; }
 }
 
 @keyframes fadeScaleIn {

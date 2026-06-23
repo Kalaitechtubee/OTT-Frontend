@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, memo } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { PosterCard } from '@/components/common/PosterCard'
 import { PageContainer } from '@/components/layout/PageContainer'
+import { useScrollStore } from '@/store/scrollStore'
 import type { V2SearchResult } from '@/types/v2'
 
 interface ContentGridProps {
@@ -11,7 +12,7 @@ interface ContentGridProps {
   variant?: 'grid' | 'rail' | 'trending' | 'large'
 }
 
-export function ContentGrid({
+export const ContentGrid = memo(function ContentGrid({
   title,
   items,
   showRank,
@@ -21,6 +22,9 @@ export function ContentGrid({
   const [showLeft, setShowLeft] = useState(false)
   const [showRight, setShowRight] = useState(true)
   const scrollTimeoutRef = useRef<number | null>(null)
+
+  const setCarouselScroll = useScrollStore((s) => s.setCarouselScroll)
+  const getCarouselScroll = useScrollStore((s) => s.getCarouselScroll)
 
   const checkScroll = () => {
     if (scrollTimeoutRef.current) {
@@ -35,17 +39,31 @@ export function ContentGrid({
     })
   }
 
+  // Restore and listen to horizontal scroll
   useEffect(() => {
     const el = scrollRef.current
     if (el) {
-      el.addEventListener('scroll', checkScroll, { passive: true })
+      // 1. Restore scroll position
+      const savedScroll = getCarouselScroll(title)
+      if (savedScroll > 0) {
+        el.scrollLeft = savedScroll
+      }
+
+      // 2. Track scroll to save state
+      const handleScrollSave = () => {
+        setCarouselScroll(title, el.scrollLeft)
+        checkScroll()
+      }
+
+      el.addEventListener('scroll', handleScrollSave, { passive: true })
       checkScroll()
+      
       // Wait a bit for images/elements to render and measure again
       const timer = setTimeout(checkScroll, 200)
       window.addEventListener('resize', checkScroll, { passive: true })
 
       return () => {
-        el.removeEventListener('scroll', checkScroll)
+        el.removeEventListener('scroll', handleScrollSave)
         clearTimeout(timer)
         window.removeEventListener('resize', checkScroll)
         if (scrollTimeoutRef.current) {
@@ -53,7 +71,7 @@ export function ContentGrid({
         }
       }
     }
-  }, [items])
+  }, [items, title, getCarouselScroll, setCarouselScroll])
 
   if (!items.length) return null
 
@@ -129,5 +147,6 @@ export function ContentGrid({
       </div>
     </section>
   )
-}
+})
+
 

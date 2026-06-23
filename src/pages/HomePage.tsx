@@ -1,219 +1,84 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { HeroBanner } from '@/components/home/HeroBanner'
 import { ContentGrid } from '@/components/home/ContentGrid'
 import { ContinueWatchingSection } from '@/components/home/ContinueWatchingSection'
 import { ErrorState } from '@/components/common/ErrorState'
 import { Shimmer } from '@/components/common/Shimmer'
-import { getTmdbList } from '@/services/api'
-import type { V2SearchResult } from '@/types/v2'
-
-interface HomeCacheData {
-  heroItems: V2SearchResult[]
-  trendingNow: V2SearchResult[]
-  popularMovies: V2SearchResult[]
-  topRated: V2SearchResult[]
-  tamilMovies: V2SearchResult[]
-  teluguMovies: V2SearchResult[]
-  hindiMovies: V2SearchResult[]
-  malayalamMovies: V2SearchResult[]
-  kannadaMovies: V2SearchResult[]
-  koreanMovies: V2SearchResult[]
-  actionMovies: V2SearchResult[]
-  comedyMovies: V2SearchResult[]
-  horrorMovies: V2SearchResult[]
-  scifiMovies: V2SearchResult[]
-  animationMovies: V2SearchResult[]
-  thrillerMovies: V2SearchResult[]
-  romanceMovies: V2SearchResult[]
-  popularTv: V2SearchResult[]
-  upcomingMovies: V2SearchResult[]
-  recommended: V2SearchResult[]
-}
-
-// In-memory cache outside the React cycle to persist loaded content across mounts
-let homeCache: HomeCacheData | null = null
-let homeCacheTime = 0
-const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes cache TTL
+import { useCatalogStore } from '@/store/catalogStore'
 
 export function HomePage() {
-  const [heroItems, setHeroItems] = useState<V2SearchResult[]>(homeCache?.heroItems ?? [])
-  const [trendingNow, setTrendingNow] = useState<V2SearchResult[]>(homeCache?.trendingNow ?? [])
-  const [popularMovies, setPopularMovies] = useState<V2SearchResult[]>(homeCache?.popularMovies ?? [])
-  const [topRated, setTopRated] = useState<V2SearchResult[]>(homeCache?.topRated ?? [])
-  const [tamilMovies, setTamilMovies] = useState<V2SearchResult[]>(homeCache?.tamilMovies ?? [])
-  const [teluguMovies, setTeluguMovies] = useState<V2SearchResult[]>(homeCache?.teluguMovies ?? [])
-  const [hindiMovies, setHindiMovies] = useState<V2SearchResult[]>(homeCache?.hindiMovies ?? [])
-  const [malayalamMovies, setMalayalamMovies] = useState<V2SearchResult[]>(homeCache?.malayalamMovies ?? [])
-  const [kannadaMovies, setKannadaMovies] = useState<V2SearchResult[]>(homeCache?.kannadaMovies ?? [])
-  const [koreanMovies, setKoreanMovies] = useState<V2SearchResult[]>(homeCache?.koreanMovies ?? [])
-  const [actionMovies, setActionMovies] = useState<V2SearchResult[]>(homeCache?.actionMovies ?? [])
-  const [comedyMovies, setComedyMovies] = useState<V2SearchResult[]>(homeCache?.comedyMovies ?? [])
-  const [horrorMovies, setHorrorMovies] = useState<V2SearchResult[]>(homeCache?.horrorMovies ?? [])
-  const [scifiMovies, setScifiMovies] = useState<V2SearchResult[]>(homeCache?.scifiMovies ?? [])
-  const [animationMovies, setAnimationMovies] = useState<V2SearchResult[]>(homeCache?.animationMovies ?? [])
-  const [thrillerMovies, setThrillerMovies] = useState<V2SearchResult[]>(homeCache?.thrillerMovies ?? [])
-  const [romanceMovies, setRomanceMovies] = useState<V2SearchResult[]>(homeCache?.romanceMovies ?? [])
-  const [popularTv, setPopularTv] = useState<V2SearchResult[]>(homeCache?.popularTv ?? [])
-  const [upcomingMovies, setUpcomingMovies] = useState<V2SearchResult[]>(homeCache?.upcomingMovies ?? [])
-  const [recommended, setRecommended] = useState<V2SearchResult[]>(homeCache?.recommended ?? [])
-
-  const [loading, setLoading] = useState(!homeCache)
-  const [error, setError] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string>()
-
-  const loadCatalog = useCallback(async () => {
-    // Skip loading if cached data is fresh
-    if (homeCache && Date.now() - homeCacheTime < CACHE_TTL_MS) {
-      return
-    }
-
-    // Only trigger full visual loading/shimmer if we don't have cached content
-    const hasCache = !!homeCache
-    if (!hasCache) {
-      setLoading(true)
-    }
-    setError(false)
-    setErrorMessage(undefined)
-
-    try {
-      const [
-        heroData,
-        trendingData,
-        popularData,
-        topRatedData,
-        tamilData,
-        teluguData,
-        hindiData,
-        malayalamData,
-        kannadaData,
-        koreanData,
-        actionData,
-        comedyData,
-        horrorData,
-        scifiData,
-        animationData,
-        thrillerData,
-        romanceData,
-        popularTvData,
-        upcomingData,
-        recData,
-      ] = await Promise.all([
-        getTmdbList('trending', { time: 'week', media: 'all' }),
-        getTmdbList('trending', { time: 'day', media: 'movie' }),
-        getTmdbList('popular'),
-        getTmdbList('top_rated'),
-        getTmdbList('discover', { with_original_language: 'ta' }),
-        getTmdbList('discover', { with_original_language: 'te' }),
-        getTmdbList('discover', { with_original_language: 'hi' }),
-        getTmdbList('discover', { with_original_language: 'ml' }),
-        getTmdbList('discover', { with_original_language: 'kn' }),
-        getTmdbList('discover', { with_original_language: 'ko' }),
-        getTmdbList('discover', { with_genres: '28' }),
-        getTmdbList('discover', { with_genres: '35' }),
-        getTmdbList('discover', { with_genres: '27' }),
-        getTmdbList('discover', { with_genres: '878' }),
-        getTmdbList('discover', { with_genres: '16' }),
-        getTmdbList('discover', { with_genres: '53' }),
-        getTmdbList('discover', { with_genres: '10749' }),
-        getTmdbList('popular_tv'),
-        getTmdbList('upcoming'),
-        getTmdbList('discover', { with_origin_country: 'IN' }), // Indian hits as recommendations fallback
-      ])
-
-      const nextHero = heroData.slice(0, 5)
-
-      setHeroItems(nextHero)
-      setTrendingNow(trendingData)
-      setPopularMovies(popularData)
-      setTopRated(topRatedData)
-      setTamilMovies(tamilData)
-      setTeluguMovies(teluguData)
-      setHindiMovies(hindiData)
-      setMalayalamMovies(malayalamData)
-      setKannadaMovies(kannadaData)
-      setKoreanMovies(koreanData)
-      setActionMovies(actionData)
-      setComedyMovies(comedyData)
-      setHorrorMovies(horrorData)
-      setScifiMovies(scifiData)
-      setAnimationMovies(animationData)
-      setThrillerMovies(thrillerData)
-      setRomanceMovies(romanceData)
-      setPopularTv(popularTvData)
-      setUpcomingMovies(upcomingData)
-      setRecommended(recData)
-
-      // Update in-memory cache
-      homeCache = {
-        heroItems: nextHero,
-        trendingNow: trendingData,
-        popularMovies: popularData,
-        topRated: topRatedData,
-        tamilMovies: tamilData,
-        teluguMovies: teluguData,
-        hindiMovies: hindiData,
-        malayalamMovies: malayalamData,
-        kannadaMovies: kannadaData,
-        koreanMovies: koreanData,
-        actionMovies: actionData,
-        comedyMovies: comedyData,
-        horrorMovies: horrorData,
-        scifiMovies: scifiData,
-        animationMovies: animationData,
-        thrillerMovies: thrillerData,
-        romanceMovies: romanceData,
-        popularTv: popularTvData,
-        upcomingMovies: upcomingData,
-        recommended: recData,
-      }
-      homeCacheTime = Date.now()
-    } catch (err) {
-      console.error('Failed to load TMDB catalog:', err)
-      // Only show visual error state if we have nothing cached to display
-      if (!homeCache) {
-        setError(true)
-        setErrorMessage('Could not load the catalog. Please try again.')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const homeCatalog = useCatalogStore((s) => s.homeCatalog?.data)
+  const loading = useCatalogStore((s) => s.loading['home'])
+  const error = useCatalogStore((s) => s.errors['home'])
+  const fetchHomeCatalog = useCatalogStore((s) => s.fetchHomeCatalog)
 
   useEffect(() => {
-    loadCatalog()
-  }, [loadCatalog])
+    void fetchHomeCatalog()
+  }, [fetchHomeCatalog])
 
-  if (loading && heroItems.length === 0) {
+  if (loading && !homeCatalog) {
     return (
-      <div className="min-h-screen bg-mz-background pb-12 pt-8">
-        <PageContainer className="space-y-8">
-          {/* Hero Banner Shimmer */}
-          <Shimmer className="aspect-[21/9] min-h-[350px] w-full rounded-2xl" />
-          
-          {/* Rails Shimmer */}
-          {Array.from({ length: 4 }).map((_, rIdx) => (
-            <div key={rIdx} className="space-y-4 pt-4">
-              <Shimmer className="h-8 w-48 rounded" />
-              <div className="flex gap-4 overflow-x-hidden">
-                {Array.from({ length: 6 }).map((_, cIdx) => (
-                  <Shimmer key={cIdx} className="aspect-[2/3] w-[150px] sm:w-[170px] shrink-0 rounded-xl" />
+      <div className="min-h-screen bg-mz-background pb-16">
+        {/* Hero Banner Shimmer — full-width, matches real HeroBanner */}
+        <Shimmer className="w-full rounded-none" style={{ height: '56vw', maxHeight: 480, minHeight: 280 }} />
+
+        {/* Rails Shimmer */}
+        <div className="mt-6 space-y-8 px-5 sm:px-8 lg:px-10">
+          {Array.from({ length: 3 }).map((_, rIdx) => (
+            <div key={rIdx} className="space-y-3">
+              {/* Section title shimmer */}
+              <Shimmer className="h-5 w-40 rounded-md" />
+              {/* Cards rail — bleeds to screen edge like ContentGrid */}
+              <div
+                className="-mx-5 flex gap-3 overflow-x-auto no-scrollbar px-5 sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10 pb-2"
+              >
+                {Array.from({ length: 8 }).map((_, cIdx) => (
+                  <Shimmer
+                    key={cIdx}
+                    className="aspect-[2/3] w-[130px] sm:w-[150px] lg:w-[160px] shrink-0 rounded-xl"
+                  />
                 ))}
               </div>
             </div>
           ))}
-        </PageContainer>
+        </div>
       </div>
     )
   }
 
-  if (error && heroItems.length === 0) {
+  if (error && !homeCatalog) {
     return (
       <PageContainer className="py-16">
-        <ErrorState message={errorMessage} onRetry={loadCatalog} />
+        <ErrorState message={error} onRetry={() => fetchHomeCatalog(0)} />
       </PageContainer>
     )
   }
+
+  if (!homeCatalog) return null
+
+  const {
+    heroItems,
+    trendingNow,
+    popularMovies,
+    topRated,
+    tamilMovies,
+    teluguMovies,
+    hindiMovies,
+    malayalamMovies,
+    kannadaMovies,
+    koreanMovies,
+    actionMovies,
+    comedyMovies,
+    horrorMovies,
+    scifiMovies,
+    animationMovies,
+    thrillerMovies,
+    romanceMovies,
+    popularTv,
+    upcomingMovies,
+    recommended,
+  } = homeCatalog
 
   // Gather all unique poster images fetched from all rails to feed into the HeroBanner collage background
   const allPosters = Array.from(
@@ -314,3 +179,4 @@ export function HomePage() {
     </div>
   )
 }
+

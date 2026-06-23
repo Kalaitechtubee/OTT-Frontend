@@ -3,7 +3,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { Globe, Search, User, Menu, X, Home, Film, Tv, Library } from 'lucide-react'
 import { AppLogo } from '@/components/common/AppLogo'
 import { appBrand } from '@/core/brand/appBrand'
-import { useAppStore, isSupportedLanguage } from '@/store/appStore'
+import { LANGUAGES } from '@/store/appStore'
 import { paths } from '@/routes/paths'
 
 const navLinks = [
@@ -16,10 +16,10 @@ const navLinks = [
 
 export function SiteHeader() {
   const navigate = useNavigate()
-  const language = useAppStore((s) => s.preferredLanguage)
   const [query, setQuery] = useState('')
   const [isScrolled, setIsScrolled] = useState(false)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false)
 
   useEffect(() => {
     const handleScroll = () => {
@@ -109,23 +109,35 @@ export function SiteHeader() {
 
         {/* Desktop User / Language settings */}
         <div className="ml-auto flex items-center gap-2 md:ml-0">
-          {language && isSupportedLanguage(language) && (
-            <Link
-              to={paths.languageHub(language)}
-              className="hidden items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-mz-secondary transition hover:bg-white/5 hover:text-white lg:flex"
-              title={`${language} Hub`}
-            >
-              {language} Hub
-            </Link>
-          )}
-          <Link
-            to={paths.language}
-            className="hidden items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-mz-secondary transition hover:bg-white/5 hover:text-white sm:flex"
-            title="Content language"
+          {/* Languages Dropdown */}
+          <div
+            className="relative hidden sm:block"
+            onMouseEnter={() => setIsLangDropdownOpen(true)}
+            onMouseLeave={() => setIsLangDropdownOpen(false)}
           >
-            <Globe className="h-4 w-4" />
-            {language || 'Language'}
-          </Link>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-mz-secondary transition hover:bg-white/5 hover:text-white cursor-pointer"
+            >
+              <Globe className="h-4 w-4" />
+              Languages
+            </button>
+            {isLangDropdownOpen && (
+              <div className="absolute right-0 top-full mt-1 w-44 rounded-xl border border-white/10 bg-mz-card p-1.5 shadow-2xl backdrop-blur-xl z-50">
+                {LANGUAGES.map((lang) => (
+                  <Link
+                    key={lang.name}
+                    to={paths.languageHub(lang.name)}
+                    className="flex items-center justify-between rounded-lg px-3.5 py-2.5 text-sm text-mz-secondary hover:bg-white/5 hover:text-white transition"
+                    onClick={() => setIsLangDropdownOpen(false)}
+                  >
+                    <span>{lang.name}</span>
+                    <span className="text-xs text-mz-secondary/65 font-medium">{lang.native}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
           <Link
             to={paths.account}
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-mz-secondary transition hover:bg-white/5 hover:text-white"
@@ -196,33 +208,26 @@ export function SiteHeader() {
           </nav>
 
           {/* Footer settings inside drawer */}
-          <div className="border-t border-white/5 p-4 bg-black/20">
+          <div className="border-t border-white/5 p-4 bg-black/20 space-y-4">
+            <div>
+              <p className="px-4 text-[9px] font-extrabold uppercase tracking-widest text-zinc-500 mb-2">
+                Language Hubs
+              </p>
+              <div className="space-y-1">
+                {LANGUAGES.map((lang) => (
+                  <Link
+                    key={lang.name}
+                    to={paths.languageHub(lang.name)}
+                    onClick={() => setIsDrawerOpen(false)}
+                    className="flex items-center justify-between rounded-xl px-4 py-2.5 text-xs font-bold text-mz-secondary hover:bg-white/5 hover:text-white transition"
+                  >
+                    <span>{lang.name} Hub</span>
+                    <span className="text-zinc-500 text-[10px]">{lang.native}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
             <div className="space-y-1">
-              <Link
-                to={paths.language}
-                onClick={() => setIsDrawerOpen(false)}
-                className="flex items-center justify-between rounded-xl px-4 py-2.5 text-xs font-bold text-mz-secondary hover:bg-white/5 hover:text-white transition"
-              >
-                <span className="flex items-center gap-2.5">
-                  <Globe className="h-4 w-4" />
-                  Language
-                </span>
-                <span className="text-white bg-white/10 px-2 py-0.5 rounded text-[10px] tracking-wider uppercase font-bold">
-                  {language || 'Default'}
-                </span>
-              </Link>
-
-              {language && isSupportedLanguage(language) && (
-                <Link
-                  to={paths.languageHub(language)}
-                  onClick={() => setIsDrawerOpen(false)}
-                  className="flex items-center gap-2.5 rounded-xl px-4 py-2.5 text-xs font-bold text-mz-secondary hover:bg-white/5 hover:text-white transition"
-                >
-                  <Globe className="h-4 w-4 text-mz-primary" />
-                  <span>{language} Hub</span>
-                </Link>
-              )}
-
               <Link
                 to={paths.account}
                 onClick={() => setIsDrawerOpen(false)}

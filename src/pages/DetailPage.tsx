@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { ChevronLeft, Film, Star, Play, Download, HelpCircle, ChevronDown } from 'lucide-react'
 import { PageContainer } from '@/components/layout/PageContainer'
-import { SiteHeader } from '@/components/layout/SiteHeader'
 import { FeedbackBanner } from '@/components/common/FeedbackBanner'
 import { CastSection } from '@/components/detail/CastSection'
 import { RecommendationsSection } from '@/components/detail/RecommendationsSection'
@@ -25,6 +24,7 @@ import {
 
 import { useDownloadStore } from '@/store/downloadStore'
 import { usePlayerStore } from '@/store/playerStore'
+import { useCatalogStore } from '@/store/catalogStore'
 import { paths } from '@/routes/paths'
 import type { Provider, V2Details, V2Stream, V2Subtitle } from '@/types/v2'
 import { parseV2Rating, parseV2Quality, parseYoutubeKey } from '@/types/v2'
@@ -137,22 +137,16 @@ export function DetailPage() {
   const sourcesParam = searchParams.get('sources') || undefined
 
   const navigate = useNavigate()
+  const location = useLocation()
   const play = usePlayerStore((s) => s.play)
   const startDownload = useDownloadStore((s) => s.startDownload)
 
   // Synchronous cache lookup for instant detail rendering
-  const cachedDetails = (() => {
-    if (tmdbId) {
-      const type = searchParams.get('type') || 'movie'
-      return getSyncCachedDetailsByTmdbId(tmdbId, type, titleParam, yearParam)
-    } else if (provider && id) {
-      return getSyncCachedDetail(provider as Provider, id, titleParam, yearParam, sourcesParam)
-    }
-    return null
-  })()
+  const detailsKey = tmdbId ? `tmdb_${tmdbId}` : `${provider}_${id}`
+  const details = useCatalogStore((s) => s.detailsCaches[detailsKey]?.data || null)
+  const loading = useCatalogStore((s) => s.loading[detailsKey] || false)
+  const fetchDetails = useCatalogStore((s) => s.fetchDetails)
 
-  const [details, setDetails] = useState<V2Details | null>(cachedDetails)
-  const [loading, setLoading] = useState(!cachedDetails)
   const [downloading, setDownloading] = useState(false)
   const playing = false
 
@@ -210,32 +204,18 @@ export function DetailPage() {
 
   // Fetch Details in the background
   useEffect(() => {
-    let cancelled = false
-      ; (async () => {
-        if (!cachedDetails) {
-          setLoading(true)
-        }
-        try {
-          let data: V2Details | null = null
-          if (tmdbId) {
-            const type = searchParams.get('type') || 'movie'
-            data = await getDetailsByTmdbId(tmdbId, type, titleParam, yearParam)
-          } else if (provider && id) {
-            data = await getDetailsV2(provider as Provider, id, titleParam, yearParam, sourcesParam)
-          }
-          if (cancelled) return
-          setDetails(data)
-        } catch (err) {
-          if (cancelled) return
-          setFeedback(err instanceof Error ? err.message : 'Failed to load details')
-        } finally {
-          if (!cancelled) setLoading(false)
-        }
-      })()
-    return () => {
-      cancelled = true
+    const fetchFn = async () => {
+      if (tmdbId) {
+        const type = searchParams.get('type') || 'movie'
+        return getDetailsByTmdbId(tmdbId, type, titleParam, yearParam)
+      } else if (provider && id) {
+        return getDetailsV2(provider as Provider, id, titleParam, yearParam, sourcesParam)
+      }
+      return null
     }
-  }, [provider, id, tmdbId, titleParam, yearParam, sourcesParam, searchParams, cachedDetails])
+
+    void fetchDetails(detailsKey, fetchFn)
+  }, [detailsKey, provider, id, tmdbId, titleParam, yearParam, sourcesParam, searchParams, fetchDetails])
 
   // Provider status is derived from the backend's availability response (details.sources).
   // Source indicators are shown directly from details.sources — no client-side polling needed.
@@ -310,7 +290,9 @@ export function DetailPage() {
       query.set('dub', selectedLanguage.dubSubjectId)
     }
 
-    navigate(`/play/${episodeProvider}/${episodeId}?${query.toString()}`)
+    navigate(`/play/${episodeProvider}/${episodeId}?${query.toString()}`, {
+      state: { backgroundLocation: location },
+    })
   }
 
   // Play Movie / Stream handler
@@ -338,7 +320,9 @@ export function DetailPage() {
 
     if (explicitSource) {
       // User explicitly selected a server — route directly to that provider
-      navigate(`/play/${explicitSource.provider}/${explicitSource.id}?${query.toString()}`)
+      navigate(`/play/${explicitSource.provider}/${explicitSource.id}?${query.toString()}`, {
+        state: { backgroundLocation: location },
+      })
     } else {
       // Auto-play: let the backend pipeline decide the provider.
       // Navigate to /play/tmdb/:tmdbId — PlayerPage calls resolveStream() which runs the pipeline.
@@ -347,7 +331,9 @@ export function DetailPage() {
         setFeedback('Streaming sources are currently unavailable for this title.')
         return
       }
-      navigate(`/play/tmdb/${tmdbTarget}?${query.toString()}`)
+      navigate(`/play/tmdb/${tmdbTarget}?${query.toString()}`, {
+        state: { backgroundLocation: location },
+      })
     }
   }
 
@@ -480,10 +466,9 @@ export function DetailPage() {
     setTrailerKey(key)
   }
 
-  if (loading) {
+  if (loading && !details) {
     return (
       <div className="min-h-dvh bg-mz-background">
-        <SiteHeader />
         <PageContainer className="py-10">
           <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
             <Shimmer className="aspect-[2/3] w-full max-w-[280px] rounded-xl" />
@@ -501,7 +486,6 @@ export function DetailPage() {
   if (!details) {
     return (
       <div className="min-h-dvh bg-mz-background">
-        <SiteHeader />
         <PageContainer className="py-16">
           <ErrorState onRetry={() => window.location.reload()} />
         </PageContainer>
@@ -514,7 +498,6 @@ export function DetailPage() {
 
   return (
     <div className="min-h-dvh bg-mz-background pb-12">
-      <SiteHeader />
 
       {details.backdrop && (
         <div className="relative h-[45vh] w-full overflow-hidden sm:h-[50vh] md:h-[60vh] lg:h-[65vh] bg-black select-none pointer-events-none">

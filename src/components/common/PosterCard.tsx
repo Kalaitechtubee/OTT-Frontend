@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, memo } from 'react'
 import { Link } from 'react-router-dom'
 import { Play, Star } from 'lucide-react'
 import { paths } from '@/routes/paths'
 import { parseV2Rating } from '@/types/v2'
+import { LazyImage } from '@/components/common/LazyImage'
+import { getDetailsV2, getDetailsByTmdbId } from '@/services/api'
 import type { V2SearchResult } from '@/types/v2'
 
 interface PosterCardProps {
@@ -12,7 +14,7 @@ interface PosterCardProps {
   variant?: 'grid' | 'rail' | 'trending' | 'large'
 }
 
-export function PosterCard({
+export const PosterCard = memo(function PosterCard({
   result,
   rank,
   className = '',
@@ -21,8 +23,7 @@ export function PosterCard({
   const isTrending = variant === 'trending'
   const isLarge = variant === 'large'
   const isGrid = variant === 'grid'
-  const [imgFailed, setImgFailed] = useState(false)
-  const [imgLoaded, setImgLoaded] = useState(false)
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // V2 already returns full URLs
   const img = isTrending
@@ -51,15 +52,45 @@ export function PosterCard({
         sources: result.sources,
       })
 
-  useEffect(() => {
-    setImgLoaded(false)
-  }, [img])
+  const prefetchDetails = () => {
+    // Hover intent check (80ms)
+    prefetchTimerRef.current = setTimeout(() => {
+      const isTmdb = result.provider === 'tmdb' || !result.provider || !result.id
+      if (isTmdb && result.tmdbId) {
+        const type = result.mediaType || 'movie'
+        void getDetailsByTmdbId(String(result.tmdbId), type, result.title, result.year)
+      } else if (result.provider && result.id) {
+        void getDetailsV2(
+          result.provider,
+          result.id,
+          result.title,
+          result.year,
+          result.sources ? result.sources.map((s) => `${s.provider}:${s.id}`).join(',') : undefined
+        )
+      }
+    }, 80)
+  }
 
-  const imgKey = img
+  const cancelPrefetch = () => {
+    if (prefetchTimerRef.current) {
+      clearTimeout(prefetchTimerRef.current)
+      prefetchTimerRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (prefetchTimerRef.current) {
+        clearTimeout(prefetchTimerRef.current)
+      }
+    }
+  }, [])
 
   return (
     <Link
       to={detailLink}
+      onMouseEnter={prefetchDetails}
+      onMouseLeave={cancelPrefetch}
       className={`group relative block ${containerWidth} ${className}`}
     >
       <div className="flex flex-col">
@@ -74,16 +105,11 @@ export function PosterCard({
               isTrending ? 'aspect-video w-full' : 'aspect-[2/3] w-full'
             }`}
           >
-            {img && !imgFailed ? (
-              <img
-                key={imgKey}
+            {img ? (
+              <LazyImage
                 src={img}
                 alt={result.title}
-                className={`h-full w-full object-cover fade-in-image ${imgLoaded ? 'loaded' : ''}`}
-                loading="lazy"
-                decoding="async"
-                onLoad={() => setImgLoaded(true)}
-                onError={() => setImgFailed(true)}
+                className="h-full w-full object-cover"
               />
             ) : (
               <div className="flex h-full items-center justify-center p-2 text-center text-xs text-mz-secondary">
@@ -174,4 +200,4 @@ export function PosterCard({
       </div>
     </Link>
   )
-}
+})

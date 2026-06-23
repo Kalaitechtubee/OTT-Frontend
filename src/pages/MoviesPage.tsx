@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { HeroBanner } from '@/components/home/HeroBanner'
 import { ContentGrid } from '@/components/home/ContentGrid'
 import { ErrorState } from '@/components/common/ErrorState'
 import { Shimmer } from '@/components/common/Shimmer'
-import { getTmdbList } from '@/services/api'
 import { useAppStore } from '@/store/appStore'
-import type { V2SearchResult } from '@/types/v2'
+import { useCatalogStore } from '@/store/catalogStore'
 
 const LANGUAGE_CODES: Record<string, string> = {
   Tamil: 'ta',
@@ -15,192 +14,62 @@ const LANGUAGE_CODES: Record<string, string> = {
   Kannada: 'kn',
 }
 
-interface MoviesCacheData {
-  language: string
-  heroItems: V2SearchResult[]
-  trendingNow: V2SearchResult[]
-  popularMovies: V2SearchResult[]
-  topRated: V2SearchResult[]
-  upcomingMovies: V2SearchResult[]
-  actionMovies: V2SearchResult[]
-  comedyMovies: V2SearchResult[]
-  horrorMovies: V2SearchResult[]
-  scifiMovies: V2SearchResult[]
-}
-
-// In-memory cache outside component logic
-let moviesCache: MoviesCacheData | null = null
-let moviesCacheTime = 0
-const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes cache TTL
-
 export function MoviesPage() {
   const preferredLanguage = useAppStore((s) => s.preferredLanguage)
   const langCode = preferredLanguage ? LANGUAGE_CODES[preferredLanguage] : undefined
   const langName = preferredLanguage || ''
 
-  // Determine if we have a cache hit matching the active preferred language
-  const cacheHit = moviesCache && moviesCache.language === preferredLanguage
-
-  const [heroItems, setHeroItems] = useState<V2SearchResult[]>(cacheHit ? moviesCache!.heroItems : [])
-  const [trendingNow, setTrendingNow] = useState<V2SearchResult[]>(cacheHit ? moviesCache!.trendingNow : [])
-  const [popularMovies, setPopularMovies] = useState<V2SearchResult[]>(cacheHit ? moviesCache!.popularMovies : [])
-  const [topRated, setTopRated] = useState<V2SearchResult[]>(cacheHit ? moviesCache!.topRated : [])
-  const [upcomingMovies, setUpcomingMovies] = useState<V2SearchResult[]>(cacheHit ? moviesCache!.upcomingMovies : [])
-  const [actionMovies, setActionMovies] = useState<V2SearchResult[]>(cacheHit ? moviesCache!.actionMovies : [])
-  const [comedyMovies, setComedyMovies] = useState<V2SearchResult[]>(cacheHit ? moviesCache!.comedyMovies : [])
-  const [horrorMovies, setHorrorMovies] = useState<V2SearchResult[]>(cacheHit ? moviesCache!.horrorMovies : [])
-  const [scifiMovies, setScifiMovies] = useState<V2SearchResult[]>(cacheHit ? moviesCache!.scifiMovies : [])
-
-  const [loading, setLoading] = useState(!cacheHit)
-  const [error, setError] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string>()
-
-  const loadMovies = useCallback(async () => {
-    // Skip loading if cached data is fresh and languages match
-    const activeCacheHit = moviesCache && moviesCache.language === preferredLanguage
-    if (activeCacheHit && Date.now() - moviesCacheTime < CACHE_TTL_MS) {
-      return
-    }
-
-    // Only show loader skeletons if we don't have matching cached contents
-    if (!activeCacheHit) {
-      setLoading(true)
-    }
-    setError(false)
-    setErrorMessage(undefined)
-
-    try {
-      let heroData: V2SearchResult[] = []
-      let trendingData: V2SearchResult[] = []
-      let popularData: V2SearchResult[] = []
-      let topRatedData: V2SearchResult[] = []
-      let upcomingData: V2SearchResult[] = []
-      let actionData: V2SearchResult[] = []
-      let comedyData: V2SearchResult[] = []
-      let horrorData: V2SearchResult[] = []
-      let scifiData: V2SearchResult[] = []
-
-      if (langCode) {
-        // Fetch language-specific movie data using TMDB Discover
-        ;[
-          heroData,
-          trendingData,
-          popularData,
-          topRatedData,
-          upcomingData,
-          actionData,
-          comedyData,
-          horrorData,
-          scifiData,
-        ] = await Promise.all([
-          // For language-specific hero items, discover highly popular movies of that language
-          getTmdbList('discover', { type: 'movie', with_original_language: langCode, sort_by: 'popularity.desc' }),
-          getTmdbList('discover', { type: 'movie', with_original_language: langCode, sort_by: 'popularity.desc' }),
-          getTmdbList('discover', { type: 'movie', with_original_language: langCode, sort_by: 'popularity.desc' }),
-          getTmdbList('discover', { type: 'movie', with_original_language: langCode, sort_by: 'vote_average.desc', 'vote_count.gte': '20' }),
-          getTmdbList('discover', { type: 'movie', with_original_language: langCode, sort_by: 'release_date.desc', 'vote_count.gte': '5' }),
-          getTmdbList('discover', { type: 'movie', with_original_language: langCode, with_genres: '28' }),
-          getTmdbList('discover', { type: 'movie', with_original_language: langCode, with_genres: '35' }),
-          getTmdbList('discover', { type: 'movie', with_original_language: langCode, with_genres: '27' }),
-          getTmdbList('discover', { type: 'movie', with_original_language: langCode, with_genres: '878' }),
-        ])
-      } else {
-        // Fetch global movie data
-        ;[
-          heroData,
-          trendingData,
-          popularData,
-          topRatedData,
-          upcomingData,
-          actionData,
-          comedyData,
-          horrorData,
-          scifiData,
-        ] = await Promise.all([
-          getTmdbList('trending', { time: 'week', media: 'movie' }),
-          getTmdbList('trending', { time: 'day', media: 'movie' }),
-          getTmdbList('popular'),
-          getTmdbList('top_rated'),
-          getTmdbList('upcoming'),
-          getTmdbList('discover', { type: 'movie', with_genres: '28' }),
-          getTmdbList('discover', { type: 'movie', with_genres: '35' }),
-          getTmdbList('discover', { type: 'movie', with_genres: '27' }),
-          getTmdbList('discover', { type: 'movie', with_genres: '878' }),
-        ])
-      }
-
-      const nextHero = heroData.slice(0, 5)
-
-      setHeroItems(nextHero)
-      setTrendingNow(trendingData)
-      setPopularMovies(popularData)
-      setTopRated(topRatedData)
-      setUpcomingMovies(upcomingData)
-      setActionMovies(actionData)
-      setComedyMovies(comedyData)
-      setHorrorMovies(horrorData)
-      setScifiMovies(scifiData)
-
-      // Update in-memory cache
-      moviesCache = {
-        language: preferredLanguage,
-        heroItems: nextHero,
-        trendingNow: trendingData,
-        popularMovies: popularData,
-        topRated: topRatedData,
-        upcomingMovies: upcomingData,
-        actionMovies: actionData,
-        comedyMovies: comedyData,
-        horrorMovies: horrorData,
-        scifiMovies: scifiData,
-      }
-      moviesCacheTime = Date.now()
-    } catch (err) {
-      console.error('Failed to load TMDB movies:', err)
-      // Only show error screen if we have no cache to fall back on
-      if (!activeCacheHit) {
-        setError(true)
-        setErrorMessage('Could not load movies. Please try again.')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [langCode, preferredLanguage])
+  const moviesCatalog = useCatalogStore((s) => s.moviesCatalog?.data)
+  const cacheHit = moviesCatalog && moviesCatalog.language === preferredLanguage
+  const loading = useCatalogStore((s) => s.loading['movies'])
+  const error = useCatalogStore((s) => s.errors['movies'])
+  const fetchMoviesCatalog = useCatalogStore((s) => s.fetchMoviesCatalog)
 
   useEffect(() => {
-    loadMovies()
-  }, [loadMovies])
+    void fetchMoviesCatalog(preferredLanguage, langCode)
+  }, [fetchMoviesCatalog, preferredLanguage, langCode])
 
-  if (loading && heroItems.length === 0) {
+  if (loading && !cacheHit) {
     return (
-      <div className="min-h-screen bg-mz-background pb-12 pt-8">
-        <PageContainer className="space-y-8">
-          {/* Hero Banner Shimmer */}
-          <Shimmer className="aspect-[21/9] min-h-[350px] w-full rounded-2xl" />
-          
-          {/* Rails Shimmer */}
-          {Array.from({ length: 4 }).map((_, rIdx) => (
-            <div key={rIdx} className="space-y-4 pt-4">
-              <Shimmer className="h-8 w-48 rounded" />
-              <div className="flex gap-4 overflow-x-hidden">
-                {Array.from({ length: 6 }).map((_, cIdx) => (
-                  <Shimmer key={cIdx} className="aspect-[2/3] w-[150px] sm:w-[170px] shrink-0 rounded-xl" />
+      <div className="min-h-screen bg-mz-background pb-16">
+        <Shimmer className="w-full rounded-none" style={{ height: '56vw', maxHeight: 480, minHeight: 280 }} />
+        <div className="mt-6 space-y-8 px-5 sm:px-8 lg:px-10">
+          {Array.from({ length: 3 }).map((_, rIdx) => (
+            <div key={rIdx} className="space-y-3">
+              <Shimmer className="h-5 w-40 rounded-md" />
+              <div className="-mx-5 flex gap-3 overflow-x-auto no-scrollbar px-5 sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10 pb-2">
+                {Array.from({ length: 8 }).map((_, cIdx) => (
+                  <Shimmer key={cIdx} className="aspect-[2/3] w-[130px] sm:w-[150px] lg:w-[160px] shrink-0 rounded-xl" />
                 ))}
               </div>
             </div>
           ))}
-        </PageContainer>
+        </div>
       </div>
     )
   }
 
-  if (error && heroItems.length === 0) {
+  if (error && !cacheHit) {
     return (
       <PageContainer className="py-16">
-        <ErrorState message={errorMessage} onRetry={loadMovies} />
+        <ErrorState message={error} onRetry={() => fetchMoviesCatalog(preferredLanguage, langCode, 0)} />
       </PageContainer>
     )
   }
+
+  if (!cacheHit || !moviesCatalog) return null
+
+  const {
+    heroItems,
+    trendingNow,
+    popularMovies,
+    topRated,
+    upcomingMovies,
+    actionMovies,
+    comedyMovies,
+    horrorMovies,
+    scifiMovies,
+  } = moviesCatalog
 
   const titleSuffix = langName ? ` (${langName})` : ''
 
@@ -237,3 +106,4 @@ export function MoviesPage() {
     </div>
   )
 }
+

@@ -6,6 +6,7 @@ import { PosterCard } from '@/components/common/PosterCard'
 import { Shimmer } from '@/components/common/Shimmer'
 import { searchV2, ApiHttpError, getTmdbList } from '@/services/api'
 import { useAppStore } from '@/store/appStore'
+import { useCatalogStore } from '@/store/catalogStore'
 import type { V2SearchResult } from '@/types/v2'
 import { paths } from '@/routes/paths'
 
@@ -83,17 +84,24 @@ const FALLBACK_SUGGESTIONS: Record<string, string[]> = {
   default: ['pushpa 2', 'kalki 2898 ad', 'rrr', 'leo', 'kgf 2', 'jawan', 'pathaan', 'stree 2', 'animal', 'dune']
 }
 
-// Module-level search cache to survive component unmounts during SPA navigation
-let searchCache: { query: string; results: V2SearchResult[] } | null = null
-
 export function SearchPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const initial = searchParams.get('q') ?? ''
-  const [query, setQuery] = useState(searchCache?.query ?? initial)
-  const [results, setResults] = useState<V2SearchResult[]>(searchCache?.results ?? [])
+
+  const searchQuery = useCatalogStore((s) => s.searchQuery)
+  const searchResults = useCatalogStore((s) => s.searchResults)
+  const setSearch = useCatalogStore((s) => s.setSearch)
+
+  const [query, setQuery] = useState(searchQuery || initial)
+  const [results, setResults] = useState<V2SearchResult[]>(searchResults)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // Keep results in sync with store
+  useEffect(() => {
+    setResults(searchResults)
+  }, [searchResults])
 
   // Language state
   const preferredLanguage = useAppStore((s) => s.preferredLanguage)
@@ -176,15 +184,13 @@ export function SearchPage() {
 
   useEffect(() => {
     if (query.trim().length < 2) {
-      setResults([])
+      setSearch('', [])
       setError(null)
-      searchCache = null
       return
     }
 
     // Skip API request if query is already cached and loaded
-    if (searchCache && searchCache.query === query.trim()) {
-      setResults(searchCache.results)
+    if (searchQuery === query.trim()) {
       return
     }
 
@@ -195,8 +201,7 @@ export function SearchPage() {
       try {
         const items = await searchV2(query.trim(), { signal: controller.signal })
         if (controller.signal.aborted) return
-        setResults(items)
-        searchCache = { query: query.trim(), results: items }
+        setSearch(query.trim(), items)
 
         // Seamless auto-redirect for recommendations or exact search landing
         if (items.length === 1 && autoParam) {
@@ -219,8 +224,7 @@ export function SearchPage() {
         } else {
           setError('Failed to load search results. Please try again.')
         }
-        setResults([])
-        searchCache = null
+        setSearch('', [])
       } finally {
         if (!controller.signal.aborted) setLoading(false)
       }
@@ -228,12 +232,12 @@ export function SearchPage() {
       if (query.trim().length >= 2) {
         setSearchParams({ q: query.trim() }, { replace: true })
       }
-    }, 500)
+    }, 300)
     return () => {
       clearTimeout(t)
       controller.abort()
     }
-  }, [query, setSearchParams, navigate, autoParam])
+  }, [query, searchQuery, setSearch, setSearchParams, navigate, autoParam])
 
   return (
     <PageContainer className="relative py-10 min-h-[70vh]">
@@ -271,6 +275,7 @@ export function SearchPage() {
                   type="button"
                   onClick={() => {
                     setQuery('')
+                    setSearch('', [])
                     setSearchParams({}, { replace: true })
                   }}
                   className="rounded-full p-1 text-mz-secondary hover:bg-white/10 hover:text-white transition duration-200"
