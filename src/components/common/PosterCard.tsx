@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from 'react'
+import { useEffect, useRef, memo } from 'react'
 import { Link } from 'react-router-dom'
 import { Play, Star } from 'lucide-react'
 import { paths } from '@/routes/paths'

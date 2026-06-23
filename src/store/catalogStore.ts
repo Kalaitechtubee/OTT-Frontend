@@ -74,7 +74,7 @@ interface CatalogState {
   searchResults: V2SearchResult[]
 
   // In-flight fetch promises to prevent duplicate requests
-  inFlightPromises: Record<string, Promise<any>>
+  inFlightPromises: Record<string, Promise<any> | undefined>
 
   // Actions
   fetchHomeCatalog: (staleTime?: number) => Promise<void>

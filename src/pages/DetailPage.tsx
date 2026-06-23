@@ -17,8 +17,6 @@ import {
   getDetailsV2,
   getDetailsByTmdbId,
   getSeasonEpisodesV2,
-  getSyncCachedDetail,
-  getSyncCachedDetailsByTmdbId,
   resolveDownload,
 } from '@/services/api'
 
