@@ -161,6 +161,22 @@ export function PlayerPage() {
   const [videoKey, setVideoKey] = useState(0)
   const [embedFallbackIndex, setEmbedFallbackIndex] = useState(0)
 
+  interface ProviderState {
+    name: string
+    displayName: string
+    status: 'WAITING' | 'TRYING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'
+    reason?: string
+  }
+
+  const [providerStates, setProviderStates] = useState<ProviderState[]>([
+    { name: 'peachify', displayName: 'Peachify', status: 'WAITING' },
+    { name: 'streamimdb', displayName: 'StreamIMDb', status: 'WAITING' },
+    { name: 'autoembed', displayName: 'AutoEmbed', status: 'WAITING' },
+    { name: 'embedsu', displayName: 'EmbedSU', status: 'WAITING' },
+    { name: 'vidsrc', displayName: 'VidSrc', status: 'WAITING' }
+  ])
+  const abortControllerRef = useRef<AbortController | null>(null)
+
   // Dynamically resolve stream in the background if not pre-loaded (e.g. reload or instant navigation)
   useEffect(() => {
     // If the stream URL is already set and matches the active route ID, we don't need to resolve again
@@ -202,7 +218,6 @@ export function PlayerPage() {
 
         if (provider === 'tmdb') {
           // Backend-controlled pipeline: backend decides which provider to use.
-          // This is the deterministic path — NetMirror first, Peachify on fallback.
           let tmdbTarget = id || tmdbIdParam || ''
           const tvMatch = String(tmdbTarget).match(/^(\d+)[-:](\d+)[-:](\d+)$/)
           let season = seasonParam ? parseInt(seasonParam, 10) : undefined
@@ -212,11 +227,108 @@ export function PlayerPage() {
             if (season === undefined) season = parseInt(tvMatch[2], 10)
             if (episode === undefined) episode = parseInt(tvMatch[3], 10)
           }
-          res = await resolveStream(tmdbTarget, mediaTypeParam, season, episode, dubParam)
+
+          const abortController = new AbortController()
+          abortControllerRef.current = abortController
+
+          const query = new URLSearchParams()
+          query.set('type', mediaTypeParam)
+          if (season !== undefined) query.set('season', String(season))
+          if (episode !== undefined) query.set('episode', String(episode))
+          if (dubParam) query.set('variant', dubParam)
+
+          const sseResponse = await fetch(`/api/v2/stream/auto/${tmdbTarget}?${query.toString()}`, {
+            signal: abortController.signal
+          })
+
+          const reader = sseResponse.body?.getReader()
+          if (!reader) throw new Error('Stream failover failed to initialize.')
+          const decoder = new TextDecoder()
+          let buffer = ''
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split('\n')
+            buffer = lines.pop() || ''
+
+            for (const line of lines) {
+              if (!line.trim()) continue
+              const dataStr = line.startsWith('data: ') ? line.substring(6) : line
+              try {
+                const event = JSON.parse(dataStr)
+                
+                if (event.status === 'STARTING') {
+                  const list = event.providers.map((name: string) => ({
+                    name,
+                    displayName: name === 'peachify' ? 'Peachify' :
+                                 name === 'streamimdb' ? 'StreamIMDb' :
+                                 name === 'autoembed' ? 'AutoEmbed' :
+                                 name === 'embedsu' ? 'EmbedSU' :
+                                 name === 'vidsrc' ? 'VidSrc' : name,
+                    status: 'WAITING' as const
+                  }))
+                  setProviderStates(list)
+                } else if (event.status === 'TRYING') {
+                  setProviderStates((prev) =>
+                    prev.map((p) =>
+                      p.name === event.provider ? { ...p, status: 'TRYING' } : p
+                    )
+                  )
+                } else if (event.status === 'FAILED') {
+                  setProviderStates((prev) =>
+                    prev.map((p) =>
+                      p.name === event.provider
+                        ? { ...p, status: 'FAILED', reason: event.reason || 'Media not found' }
+                        : p
+                    )
+                  )
+                } else if (event.status === 'SKIPPED') {
+                  setProviderStates((prev) =>
+                    prev.map((p) =>
+                      p.name === event.provider
+                        ? { ...p, status: 'SKIPPED', reason: 'Provider offline' }
+                        : p
+                    )
+                  )
+                } else if (event.status === 'SUCCESS') {
+                  setProviderStates((prev) =>
+                    prev.map((p) =>
+                      p.name === event.provider ? { ...p, status: 'SUCCESS' } : p
+                    )
+                  )
+                  res = event.stream
+                  break
+                } else if (event.status === 'FAILED_ALL') {
+                  throw new Error(event.message || 'All providers failed to load.')
+                }
+              } catch (e) {
+                if (e instanceof Error && e.message === 'All providers failed to load.') {
+                  throw e
+                }
+                console.warn('Failed to parse SSE event:', dataStr, e)
+              }
+            }
+            if (res) break
+          }
         } else {
           // Explicit provider: user manually selected a server (e.g. tapped 'Server 2').
           // Route directly to that provider — no pipeline involved.
           res = await getStreamV2(provider as any, id, sourcesList, dubParam)
+          // Mark selected provider as success
+          setProviderStates([
+            {
+              name: provider,
+              displayName: provider === 'peachify' ? 'Peachify' :
+                           provider === 'streamimdb' ? 'StreamIMDb' :
+                           provider === 'autoembed' ? 'AutoEmbed' :
+                           provider === 'embedsu' ? 'EmbedSU' :
+                           provider === 'vidsrc' ? 'VidSrc' : provider,
+              status: 'SUCCESS'
+            }
+          ])
         }
 
         if (!active) return
@@ -321,6 +433,9 @@ export function PlayerPage() {
 
     return () => {
       active = false
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
     }
   }, [provider, id, effectiveStreamUrl, playContext])
 
@@ -1486,11 +1601,65 @@ export function PlayerPage() {
           ) : (
             <>
               {(showVideoPlaceholder || statusMessage) && (
-                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black/80 backdrop-blur-md">
-                  <RefreshCw className="h-10 w-10 animate-spin text-mz-primary" />
-                  <p className="text-sm font-bold text-white">
-                    {statusMessage || 'Resolving Stream...'}
-                  </p>
+                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90 backdrop-blur-md p-6">
+                  <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900/60 p-6 shadow-2xl backdrop-blur-xl">
+                    <h3 className="text-center font-display text-base font-bold text-white tracking-wide mb-5">
+                      {statusMessage || "Searching for the best streaming source..."}
+                    </h3>
+                    
+                    <div className="space-y-3">
+                      {providerStates.map((prov) => {
+                        const isWaiting = prov.status === 'WAITING'
+                        const isTrying = prov.status === 'TRYING'
+                        const isSuccess = prov.status === 'SUCCESS'
+                        const isFailed = prov.status === 'FAILED'
+                        const isSkipped = prov.status === 'SKIPPED'
+
+                        return (
+                          <div
+                            key={prov.name}
+                            className={[
+                              'flex items-center justify-between rounded-xl border p-3.5 transition-all duration-300',
+                              isWaiting ? 'border-white/5 bg-white/[0.01] opacity-40' : '',
+                              isTrying ? 'border-amber-500/40 bg-amber-500/5 shadow-[0_0_15px_rgba(245,158,11,0.1)] scale-[1.02] font-semibold text-amber-300' : '',
+                              isSuccess ? 'border-emerald-500/40 bg-emerald-500/5 shadow-[0_0_15px_rgba(16,185,129,0.15)] text-emerald-400 font-bold' : '',
+                              isFailed ? 'border-red-500/30 bg-red-500/5 text-red-400 opacity-80' : '',
+                              isSkipped ? 'border-white/5 bg-white/[0.01] opacity-30 text-white/50' : '',
+                            ].join(' ')}
+                          >
+                            <div className="flex items-center gap-3">
+                              {isWaiting && <div className="h-4 w-4 rounded-full border-2 border-white/20" />}
+                              {isTrying && <div className="h-4 w-4 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />}
+                              {isSuccess && (
+                                <svg className="h-4.5 w-4.5 fill-current" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l5-5z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                              {isFailed && (
+                                <svg className="h-4.5 w-4.5 fill-current" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                              {isSkipped && (
+                                <svg className="h-4.5 w-4.5 fill-current" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                              <span className="text-sm tracking-wide">{prov.displayName}</span>
+                            </div>
+                            
+                            <span className="text-2xs font-extrabold uppercase tracking-widest opacity-80">
+                              {isWaiting && "Waiting"}
+                              {isTrying && "Trying..."}
+                              {isSuccess && "Connected"}
+                              {isFailed && (prov.reason || "Failed")}
+                              {isSkipped && "Offline"}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
                 </div>
               )}
               {streamType === 'embed' ? (
@@ -1513,6 +1682,7 @@ export function PlayerPage() {
                           try {
                             const host = new URL(src).hostname.replace('www.', '').toLowerCase()
                             if (host.includes('peachify') || host.includes('eat-peach')) return 'Peachify'
+                            if (host.includes('streamimdb') || host.includes('streamdata') || host.includes('vaplayer')) return 'StreamIMDb'
                             if (host.includes('vidsrc')) return 'VidSrc'
                             if (host.includes('autoembed')) return 'AutoEmbed'
                             if (host.includes('embed.su')) return 'EmbedSU'

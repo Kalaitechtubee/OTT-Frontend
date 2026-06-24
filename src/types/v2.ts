@@ -1,6 +1,6 @@
 // ─── V2 API Types ─────────────────────────────────────────────────────────────
 
-export type Provider = 'net11' | 'net52' | 'tmdb' | 'netmirror' | 'peachify' | string
+export type Provider = 'net11' | 'net52' | 'tmdb' | 'netmirror' | 'peachify' | 'streamimdb' | string
 
 export interface V2SearchResult {
   id: string
