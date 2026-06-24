@@ -68,6 +68,7 @@ export interface V2Details {
     variants?: { id: string; language: string }[]
   }[]
   audioLanguages?: string[]
+  duration?: number | null
   seasons?: {
     season_number: number
     episode_count: number

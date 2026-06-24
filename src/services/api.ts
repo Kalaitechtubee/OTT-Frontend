@@ -193,6 +193,35 @@ export async function resolveDownload(
   }
 }
 
+// ─── V2 Download (explicit provider) ───────────────────────────────────────────
+/**
+ * Fetch direct, provider-specific download stream links (CDN-tokenized).
+ */
+export async function getDownloadV2(
+  provider: string,
+  id: string,
+  season?: number,
+  episode?: number,
+  variant?: string,
+): Promise<V2StreamResult> {
+  try {
+    const params: Record<string, string> = {}
+    if (season !== undefined) params.season = String(season)
+    if (episode !== undefined) params.episode = String(episode)
+    if (variant) params.variant = variant
+
+    const data = await request<V2StreamResult>(
+      `/api/v2/download/${provider}/${id}`,
+      params,
+      { ttlMs: STREAM_TTL_MS, skipCache: true, retries: 1 },
+    )
+    return data ?? { success: false, streams: [], subtitles: [] }
+  } catch (err) {
+    if (err instanceof ApiHttpError) throw err
+    return { success: false, streams: [], subtitles: [] }
+  }
+}
+
 // ─── TMDB List Proxies ────────────────────────────────────────────────────────
 export async function getTmdbList(
   category: string, // trending, popular, top_rated, upcoming, popular_tv, discover

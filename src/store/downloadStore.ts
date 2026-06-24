@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { getStreamV2 } from '@/services/api'
+import { getDownloadV2, resolveDownload } from '@/services/api'
 import {
   buildDownloadFilename,
   fetchVideoBlobForDownload,
@@ -34,6 +34,7 @@ interface StartDownloadParams {
   season?: number
   episode?: number
   resolution: number
+  quality?: string
   language: string
   isOffline: boolean
   provider?: string
@@ -66,13 +67,32 @@ async function fetchFreshDownloadUrl(
   params: StartDownloadParams,
 ): Promise<string> {
   if (params.provider && params.id) {
-    const result = await getStreamV2(params.provider as any, params.id, undefined, params.dub)
-    const streams = result.streams
-    if (!streams.length) {
-      throw new Error('No streams available to download')
+    let result
+    if (params.provider === 'tmdb') {
+      result = await resolveDownload(
+        params.id,
+        params.type,
+        params.season,
+        params.episode,
+        params.dub
+      )
+    } else {
+      result = await getDownloadV2(
+        params.provider,
+        params.id,
+        params.season,
+        params.episode,
+        params.dub
+      )
     }
-    // Find matching quality (e.g. resolution is 720, quality is "720p" or "720")
-    const match = streams.find((s) => s.quality.includes(String(params.resolution))) || streams[0]
+    const streams = result.streams
+    if (!streams || !streams.length) {
+      throw new Error('No download streams available')
+    }
+    // Find matching quality (try exact quality label match first, then fallback to resolution number)
+    const match = (params.quality ? streams.find((s) => s.quality === params.quality) : null) ||
+                  streams.find((s) => s.quality.includes(String(params.resolution))) ||
+                  streams[0]
     if (!match) throw new Error('Selected quality is unavailable')
     return match.url
   }

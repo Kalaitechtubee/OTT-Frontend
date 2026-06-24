@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
-import { ChevronLeft, Film, Star, Play, Download, HelpCircle, ChevronDown } from 'lucide-react'
+import { ChevronLeft, Film, Star, Play, HelpCircle, ChevronDown } from 'lucide-react'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { FeedbackBanner } from '@/components/common/FeedbackBanner'
 import { CastSection } from '@/components/detail/CastSection'
@@ -17,8 +17,12 @@ import {
   getDetailsV2,
   getDetailsByTmdbId,
   getSeasonEpisodesV2,
-  resolveDownload,
 } from '@/services/api'
+
+import { useDownload } from '@/hooks/useDownload'
+import { DownloadButton } from '@/components/Download/DownloadButton'
+import { DownloadModal } from '@/components/Download/DownloadModal'
+import { DownloadProgress } from '@/components/Download/DownloadProgress'
 
 import { useDownloadStore } from '@/store/downloadStore'
 import { usePlayerStore } from '@/store/playerStore'
@@ -138,6 +142,7 @@ export function DetailPage() {
   const location = useLocation()
   const play = usePlayerStore((s) => s.play)
   const startDownload = useDownloadStore((s) => s.startDownload)
+  const dl = useDownload()
 
   // Synchronous cache lookup for instant detail rendering
   const detailsKey = tmdbId ? `tmdb_${tmdbId}` : `${provider}_${id}`
@@ -145,7 +150,6 @@ export function DetailPage() {
   const loading = useCatalogStore((s) => s.loading[detailsKey] || false)
   const fetchDetails = useCatalogStore((s) => s.fetchDetails)
 
-  const [downloading, setDownloading] = useState(false)
   const playing = false
 
   // Audio language states
@@ -336,11 +340,10 @@ export function DetailPage() {
   }
 
 
-  // Directly trigger download to local device (bypassing the type selection modal)
+  // Directly trigger download modal using the custom useDownload hook.
   // ARCHITECTURE RULE: Provider selection for downloads is the backend's responsibility.
-  // This handler calls resolveDownload(tmdbId) — the backend pipeline decides which
-  // provider handles the download (NetMirror first; Peachify is embed-only and skipped).
-  const handleDownloadClick = async () => {
+  // The custom hook fetches streams via resolveDownload, which runs the backend pipeline.
+  const handleDownloadClick = () => {
     if (!details) {
       setFeedback('Streaming sources are currently unavailable for this title.')
       return
@@ -351,40 +354,24 @@ export function DetailPage() {
       return
     }
 
-    setDownloading(true)
-    setFeedback(null)
-
     // Determine variant ID from selected language if available
     const variantId = selectedLanguage?.dubSubjectId && selectedLanguage.dubSubjectId !== ''
       ? selectedLanguage.dubSubjectId
       : undefined
 
-    try {
-      // Backend decides the provider — frontend has zero provider-selection logic here.
-      const result = await resolveDownload(
-        tmdbTarget,
-        (details.mediaType as 'movie' | 'tv') || 'movie',
-        undefined,
-        undefined,
-        variantId
-      )
-      const streams = result.streams
-      if (!streams || !streams.length) {
-        setFeedback('No download streams available for this title.')
-        return
-      }
-
-      setQualityModal({
-        mode: 'download_device',
-        streams,
-        context: { provider: result.selectedProvider || result.provider || 'netmirror', id: tmdbTarget },
+    dl.openDownload(
+      tmdbTarget,
+      (details.mediaType as 'movie' | 'tv') || 'movie',
+      {
         title: details.title,
-      } as any)
-    } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Failed to fetch download streams.')
-    } finally {
-      setDownloading(false)
-    }
+        poster: details.poster,
+        year: details.year,
+        runtime: details.duration
+      },
+      undefined,
+      undefined,
+      variantId
+    )
   }
 
   // On selecting a quality inside StreamQualityModal
@@ -432,6 +419,7 @@ export function DetailPage() {
       type: details.mediaType,
       posterPath: details.poster ?? undefined,
       resolution,
+      quality: stream.quality,
       language: selectedLanguage?.language ?? 'Original',
       isOffline,
       provider: downloadProvider,
@@ -747,21 +735,19 @@ export function DetailPage() {
                 {playing ? 'Fetching Streams…' : hasStreams ? 'Watch Now' : 'Streaming Unavailable'}
               </button>
 
-              <button
-                type="button"
-                disabled={downloading || !hasStreams || !isDownloadSupported}
+              <DownloadButton
+                loading={dl.loading}
+                disabled={!hasStreams || !isDownloadSupported}
                 onClick={handleDownloadClick}
-                className="btn-secondary w-full sm:w-auto px-7 py-4 text-base"
-              >
-                <Download className="h-5 w-5" />
-                {downloading
-                  ? 'Preparing…'
-                  : !hasStreams
+                label={
+                  !hasStreams
                     ? 'Unavailable'
                     : !isDownloadSupported
                       ? 'Coming Soon'
-                      : 'Download'}
-              </button>
+                      : 'Download'
+                }
+                className="w-full sm:w-auto px-7 py-4 text-base"
+              />
 
               {details.trailer && (
                 <button
@@ -934,6 +920,29 @@ export function DetailPage() {
         title={`${details.title} - Trailer`}
         youtubeKey={trailerKey ?? ''}
         onClose={() => setTrailerKey(null)}
+      />
+
+      {/* Download modal dialog */}
+      <DownloadModal
+        isOpen={dl.isOpen}
+        loading={dl.loading}
+        error={dl.error}
+        languages={dl.languages}
+        parsedStreams={dl.parsedStreams}
+        selectedLanguage={dl.selectedLanguage}
+        selectedQuality={dl.selectedQuality}
+        metadata={dl.metadata}
+        onClose={dl.closeDownload}
+        onSelectLanguage={dl.selectLanguage}
+        onSelectQuality={dl.selectQuality}
+        onDownload={dl.triggerDownload}
+        onRetry={dl.retry}
+      />
+
+      {/* Floating success toast */}
+      <DownloadProgress
+        message={dl.toast}
+        onDismiss={() => {}}
       />
     </div>
   )
