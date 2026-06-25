@@ -182,7 +182,7 @@ export async function resolveDownload(
     if (variant) params.variant = variant
 
     const data = await request<V2StreamResult>(
-      `/api/v2/download/tmdb/${tmdbId}`,
+      `/api/v2/download/auto/${tmdbId}`,
       params,
       { ttlMs: STREAM_TTL_MS, skipCache: true, retries: 1 },
     )

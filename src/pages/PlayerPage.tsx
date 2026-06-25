@@ -12,6 +12,7 @@ import { useHistoryStore } from '@/store/historyStore'
 import { useThemeStore } from '@/store/themeStore'
 import { paths } from '@/routes/paths'
 import { getStreamV2, resolveStream } from '@/services/api'
+import { buildApiUrl } from '@/services/apiClient'
 
 import type { Movie } from '@/types/movie'
 import type { Provider } from '@/types/v2'
@@ -126,6 +127,7 @@ export function PlayerPage() {
     selectedVariantId,
     setStreamVariant,
     play,
+    activePlayingProvider,
   } = usePlayerStore()
 
   const urlOverrideRaw = searchParams.get('url')
@@ -231,15 +233,19 @@ export function PlayerPage() {
           const abortController = new AbortController()
           abortControllerRef.current = abortController
 
-          const query = new URLSearchParams()
-          query.set('type', mediaTypeParam)
-          if (season !== undefined) query.set('season', String(season))
-          if (episode !== undefined) query.set('episode', String(episode))
-          if (dubParam) query.set('variant', dubParam)
+          const queryParams: Record<string, string> = {
+            type: mediaTypeParam,
+          }
+          if (season !== undefined) queryParams.season = String(season)
+          if (episode !== undefined) queryParams.episode = String(episode)
+          if (dubParam) queryParams.variant = dubParam
 
-          const sseResponse = await fetch(`/api/v2/stream/auto/${tmdbTarget}?${query.toString()}`, {
-            signal: abortController.signal
-          })
+          const sseResponse = await fetch(
+            buildApiUrl(`/api/v2/stream/auto/${tmdbTarget}`, queryParams),
+            {
+              signal: abortController.signal,
+            }
+          )
 
           const reader = sseResponse.body?.getReader()
           if (!reader) throw new Error('Stream failover failed to initialize.')
@@ -333,6 +339,10 @@ export function PlayerPage() {
 
         if (!active) return
 
+        if (!res) {
+          throw new Error('No stream response returned from server.')
+        }
+
         const activeVariants = res.variants || (res as any).stream?.variants || []
         const activeSelectedVariantId = res.selectedVariantId || dubParam || id
 
@@ -384,7 +394,7 @@ export function PlayerPage() {
           play(
             titleParam,
             posterParam,
-            { provider: res.selectedProvider || provider!, id },
+            { provider: provider!, id },
             res.embedUrl,
             [],
             'Embed',
@@ -396,13 +406,14 @@ export function PlayerPage() {
             res.embedUrl,
             activeVariants,
             activeSelectedVariantId,
-            res.embedFallbacks || []
+            res.embedFallbacks || [],
+            res.selectedProvider || provider!
           )
         } else if (res.streams && res.streams.length > 0) {
           play(
             titleParam,
             posterParam,
-            { provider: res.selectedProvider || provider!, id },
+            { provider: provider!, id },
             res.streams[0].url,
             res.streams,
             res.streams[0].quality,
@@ -413,7 +424,9 @@ export function PlayerPage() {
             res.streamType || null,
             null,
             activeVariants,
-            activeSelectedVariantId
+            activeSelectedVariantId,
+            undefined,
+            res.selectedProvider || provider!
           )
         } else {
           setPlaybackError('No playback streams available for this title.')
@@ -1512,8 +1525,17 @@ export function PlayerPage() {
           <ArrowLeft className="h-4 w-4" />
           <span>Back</span>
         </button>
-        <h1 className="truncate text-center font-display text-base font-black tracking-tight text-white sm:text-lg max-w-lg md:max-w-2xl">
-          {title}
+        <h1 className="truncate text-center font-display text-base font-black tracking-tight text-white sm:text-lg max-w-lg md:max-w-2xl inline-flex items-center justify-center gap-2">
+          <span>{title}</span>
+          {activePlayingProvider && (
+            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/20 shadow-sm uppercase tracking-wider">
+              Playing via {activePlayingProvider === 'peachify' ? 'Peachify' :
+                           activePlayingProvider === 'streamimdb' ? 'StreamIMDb' :
+                           activePlayingProvider === 'autoembed' ? 'AutoEmbed' :
+                           activePlayingProvider === 'embedsu' ? 'EmbedSU' :
+                           activePlayingProvider === 'vidsrc' ? 'VidSrc' : activePlayingProvider}
+            </span>
+          )}
         </h1>
         <button
           type="button"
@@ -1662,31 +1684,36 @@ export function PlayerPage() {
                   </div>
                 </div>
               )}
-              {streamType === 'embed' ? (
-                <div className="relative h-full w-full bg-black">
+
+              {streamType === 'embed' && activeEmbedUrl ? (
+                <div className="relative h-full w-full">
                   <iframe
-                    key={`embed_${embedFallbackIndex}`}
-                    src={activeEmbedUrl || undefined}
-                    className={`h-full w-full border-none ${statusMessage ? 'invisible' : ''}`}
-                    allow="autoplay; fullscreen; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    src={activeEmbedUrl}
+                    className="h-full w-full border-0 bg-black"
                     allowFullScreen
-                    referrerPolicy="no-referrer"
-                    sandbox={activeEmbedUrl.includes('peachify') ? undefined : "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"}
+                    allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
                   />
+                  
                   {/* Source switcher toolbar — shown only when multiple embed sources are available */}
                   {allEmbedSources.length > 1 && (
-                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-2xl border border-white/10 bg-black/80 backdrop-blur-md px-4 py-2 shadow-xl">
-                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest mr-1">Source</span>
+                    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2.5 rounded-2xl border border-white/5 bg-black/85 backdrop-blur-xl px-4 py-2 shadow-[0_20px_50px_rgba(0,0,0,0.9)] select-none">
+                      <span className="text-[10px] font-extrabold text-white/35 uppercase tracking-widest mr-1.5">Source</span>
                       {allEmbedSources.map((src, idx) => {
                         const srcHost = (() => {
                           try {
                             const host = new URL(src).hostname.replace('www.', '').toLowerCase()
+                            if (host.includes('vidsrc-embed.ru')) return 'VidSrc (RU)'
+                            if (host.includes('vidsrc-embed.su')) return 'VidSrc (SU)'
+                            if (host.includes('vsembed.su')) return 'VidSrc (VS)'
+                            if (host.includes('vidsrc.me')) return 'VidSrc (.me)'
+                            if (host.includes('vidsrc.to')) return 'VidSrc (.to)'
+                            if (host.includes('vidsrc.xyz')) return 'VidSrc (.xyz)'
                             if (host.includes('peachify') || host.includes('eat-peach')) return 'Peachify'
                             if (host.includes('streamimdb') || host.includes('streamdata') || host.includes('vaplayer')) return 'StreamIMDb'
-                            if (host.includes('vidsrc')) return 'VidSrc'
                             if (host.includes('autoembed')) return 'AutoEmbed'
-                            if (host.includes('embed.su')) return 'EmbedSU'
-
+                            if (host.includes('embed.su') || host.includes('embedsu')) return 'EmbedSU'
+                            if (host.includes('vidsrc')) return 'VidSrc'
+ 
                             const parts = host.split('.')
                             const name = parts.length > 1 ? parts[parts.length - 2] : host
                             return name.charAt(0).toUpperCase() + name.slice(1)
@@ -1694,15 +1721,19 @@ export function PlayerPage() {
                             return `Server ${idx + 1}`
                           }
                         })()
+                        const isActive = idx === embedFallbackIndex
                         return (
                           <button
                             key={idx}
                             type="button"
                             onClick={() => { setEmbedFallbackIndex(idx) }}
-                            className={`rounded-xl px-3 py-1.5 text-[10px] font-bold transition-all duration-200 cursor-pointer ${idx === embedFallbackIndex
-                                ? 'bg-mz-primary text-white shadow-[0_0_12px_rgba(229,9,20,0.4)]'
-                                : 'text-white/60 hover:bg-white/10 hover:text-white'
-                              }`}
+                            className={`
+                              rounded-lg px-3 py-1.5 text-[10px] font-extrabold transition-all duration-300 cursor-pointer
+                              ${isActive
+                                ? 'bg-mz-primary text-white shadow-[0_4px_16px_rgba(229,9,20,0.35)] scale-100'
+                                : 'text-white/50 hover:bg-white/5 hover:text-white hover:scale-[1.02] active:scale-[0.98]'
+                              }
+                            `}
                           >
                             {srcHost}
                           </button>

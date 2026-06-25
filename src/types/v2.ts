@@ -60,6 +60,7 @@ export interface V2Details {
     streamType?: string
     /** True = backend confirmed this provider has a working stream */
     available?: boolean
+    status?: 'ONLINE' | 'UNAVAILABLE' | 'OFFLINE'
     /** 1-based position in the backend priority list (Server 1, Server 2...) */
     serverIndex?: number
     /** Optional pre-resolved embed URL for embed-type providers */

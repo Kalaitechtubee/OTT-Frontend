@@ -62,6 +62,8 @@ interface PlayerState {
   variants: { id: string; language: string }[]
   /** Currently selected audio variant ID */
   selectedVariantId: string | null
+  /** The specific provider currently actively streaming */
+  activePlayingProvider: string | null
 
   play: (
     title: string,
@@ -78,7 +80,8 @@ interface PlayerState {
     embedUrl?: string | null,
     variants?: { id: string; language: string }[],
     selectedVariantId?: string | null,
-    embedFallbacks?: string[]
+    embedFallbacks?: string[],
+    activePlayingProvider?: string | null
   ) => void
   setStreamQuality: (streamUrl: string, quality: string, streams?: V2Stream[]) => void
   setStreamVariant: (
@@ -111,6 +114,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   embedFallbacks: [],
   variants: [],
   selectedVariantId: null,
+  activePlayingProvider: null,
 
   play: (
     title,
@@ -127,7 +131,8 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     embedUrl = null,
     variants = [],
     selectedVariantId = null,
-    embedFallbacks = []
+    embedFallbacks = [],
+    activePlayingProvider = null
   ) =>
     set({
       title,
@@ -146,6 +151,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       embedFallbacks,
       variants,
       selectedVariantId,
+      activePlayingProvider,
     }),
 
   setStreamQuality: (streamUrl, quality, streams) =>
@@ -189,5 +195,6 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       embedFallbacks: [],
       variants: [],
       selectedVariantId: null,
+      activePlayingProvider: null,
     }),
 }))

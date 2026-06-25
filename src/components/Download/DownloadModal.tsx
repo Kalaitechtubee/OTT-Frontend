@@ -14,6 +14,11 @@ interface DownloadModalProps {
   selectedLanguage: string
   selectedQuality: string
   metadata: DownloadMetadata | null
+  downloadProvider?: string | null
+  downloadType?: string | null
+  availableProviders?: { provider: string; id: string; label?: string }[]
+  activeProvider?: string | null
+  onSelectProvider?: (provider: string) => void
   onClose: () => void
   onSelectLanguage: (lang: string) => void
   onSelectQuality: (quality: string) => void
@@ -30,6 +35,11 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
   selectedLanguage,
   selectedQuality,
   metadata,
+  downloadProvider,
+  downloadType,
+  availableProviders,
+  activeProvider,
+  onSelectProvider,
   onClose,
   onSelectLanguage,
   onSelectQuality,
@@ -167,8 +177,59 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
                     </span>
                   )}
                 </div>
+
+                {/* Resolved Provider and Type badges */}
+                {(downloadProvider || downloadType) && (
+                  <div className="flex flex-wrap items-center gap-2 pt-1 font-semibold">
+                    {downloadProvider && (
+                      <span className="inline-flex items-center rounded-lg bg-mz-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-mz-primary border border-mz-primary/20">
+                        Server: {downloadProvider}
+                      </span>
+                    )}
+                    {downloadType && (
+                      <span className="inline-flex items-center rounded-lg bg-white/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/70 border border-white/5">
+                        Type: {downloadType}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Server Provider Selector */}
+            {availableProviders && availableProviders.length > 1 && (
+              <div className="space-y-3">
+                <span className="block text-xs font-extrabold uppercase tracking-widest text-mz-secondary">
+                  Select Download Server
+                </span>
+                <div className="flex flex-wrap gap-2.5">
+                  {availableProviders.map((prov) => {
+                    const isSelected = activeProvider === prov.provider
+                    const displayName = prov.provider === 'peachify' ? 'Peachify' :
+                                        prov.provider === 'streamimdb' ? 'StreamIMDb' :
+                                        prov.provider === 'autoembed' ? 'AutoEmbed' :
+                                        prov.provider === 'embedsu' ? 'EmbedSU' :
+                                        prov.provider === 'vidsrc' ? 'VidSrc' : prov.provider
+                    return (
+                      <button
+                        key={prov.provider}
+                        type="button"
+                        onClick={() => onSelectProvider?.(prov.provider)}
+                        className={`
+                          rounded-xl px-4 py-2.5 text-xs font-bold transition-all duration-200 cursor-pointer border
+                          ${isSelected
+                            ? 'bg-mz-primary/10 border-mz-primary text-mz-primary shadow-[0_0_15px_rgba(229,9,20,0.15)] font-bold'
+                            : 'bg-white/5 border-white/5 text-mz-secondary hover:bg-white/10 hover:text-white'
+                          }
+                        `}
+                      >
+                        {displayName}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Language Selector */}
             <LanguageSelector

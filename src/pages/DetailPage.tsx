@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
-import { ChevronLeft, Film, Star, Play, HelpCircle, ChevronDown } from 'lucide-react'
+import { ChevronLeft, Film, Star, Play, HelpCircle } from 'lucide-react'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { FeedbackBanner } from '@/components/common/FeedbackBanner'
 import { CastSection } from '@/components/detail/CastSection'
@@ -153,17 +153,14 @@ export function DetailPage() {
   const playing = false
 
   // Audio language states
-  const [languages, setLanguages] = useState<LanguageVariant[]>([])
   const [selectedLanguage, setSelectedLanguage] = useState<LanguageVariant | null>(null)
 
   // Sync available languages when details are loaded
   useEffect(() => {
     if (details) {
       const list = getAvailableLanguages(details)
-      setLanguages(list)
       setSelectedLanguage((prev) => resolveSelectedLanguage(list, prev))
     } else {
-      setLanguages([])
       setSelectedLanguage(null)
     }
   }, [details])
@@ -191,6 +188,7 @@ export function DetailPage() {
   // This eliminates duplicate provider requests and race conditions.
 
 
+  const isAutomatic = !!tmdbId || provider === 'tmdb'
   const activeProvider = provider || details?.provider
   const activeId = id || details?.id
   const hasStreams = !!(
@@ -288,7 +286,7 @@ export function DetailPage() {
       const srcStr = details.sources.map((s) => `${s.provider}:${s.id}`).join(',')
       query.set('sources', srcStr)
     }
-    if (selectedLanguage?.dubSubjectId) {
+    if (selectedLanguage?.dubSubjectId && selectedLanguage.dubSubjectId !== String(details.tmdbId) && selectedLanguage.dubSubjectId !== details.id) {
       query.set('dub', selectedLanguage.dubSubjectId)
     }
 
@@ -316,7 +314,7 @@ export function DetailPage() {
       const srcStr = details.sources.map((s) => `${s.provider}:${s.id}`).join(',')
       query.set('sources', srcStr)
     }
-    if (selectedLanguage?.dubSubjectId) {
+    if (selectedLanguage?.dubSubjectId && selectedLanguage.dubSubjectId !== String(details.tmdbId) && selectedLanguage.dubSubjectId !== details.id) {
       query.set('dub', selectedLanguage.dubSubjectId)
     }
 
@@ -359,6 +357,8 @@ export function DetailPage() {
       ? selectedLanguage.dubSubjectId
       : undefined
 
+    const downloadSources = details.sources?.filter(s => s.available && s.downloadSupported) || []
+
     dl.openDownload(
       tmdbTarget,
       (details.mediaType as 'movie' | 'tv') || 'movie',
@@ -370,7 +370,8 @@ export function DetailPage() {
       },
       undefined,
       undefined,
-      variantId
+      variantId,
+      downloadSources
     )
   }
 
@@ -424,7 +425,7 @@ export function DetailPage() {
       isOffline,
       provider: downloadProvider,
       id: downloadId,
-      dub: selectedLanguage?.dubSubjectId || undefined,
+      dub: (selectedLanguage?.dubSubjectId && selectedLanguage.dubSubjectId !== String(details.tmdbId) && selectedLanguage.dubSubjectId !== details.id) ? selectedLanguage.dubSubjectId : undefined,
     })
 
     if (ok) {
@@ -591,8 +592,12 @@ export function DetailPage() {
             {/* Provider and Audio track availability */}
             {hasStreams && (
               <div className="mt-4 flex flex-wrap gap-4 text-xs font-bold uppercase tracking-wider text-mz-secondary">
-                {activeProvider && (
-                  <span>Provider: <span className="text-white">{activeProvider}</span></span>
+                {isAutomatic ? (
+                  <span>Streaming Sources: <span className="text-white">Automatic Source Selection</span></span>
+                ) : (
+                  activeProvider && (
+                    <span>Provider: <span className="text-white">{activeProvider}</span></span>
+                  )
                 )}
                 {details.audioLanguages && details.audioLanguages.length > 0 && (
                   <span>Audio: <span className="text-mz-primary">{details.audioLanguages.join(', ')}</span></span>
@@ -621,46 +626,83 @@ export function DetailPage() {
 
             {/* Streaming server status indicators — ALL providers, availability from backend pipeline */}
             {details.sources && details.sources.length > 0 && (
-              <div className="mt-5 border-t border-white/5 pt-4">
-                <p className="text-xs font-bold uppercase tracking-widest text-mz-secondary">
-                  Streaming Servers
-                </p>
-                <p className="mt-1 text-[10px] text-mz-secondary/60">
-                  Click a server to play from it directly.
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2.5">
+              <div className="mt-6 border-t border-white/5 pt-5">
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-extrabold uppercase tracking-widest text-mz-secondary">
+                    Streaming Servers
+                  </p>
+                  <p className="text-2xs font-semibold text-mz-secondary/40">
+                    Click a server to play from it directly.
+                  </p>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-3">
                   {details.sources.map((src, idx) => {
-                    // Backend sets available=true only if the stream pipeline confirmed it works.
-                    // All providers are always listed — frontend never filters or hides any.
-                    const isAvailable = src.available !== false // default to true for legacy responses
+                    const isAvailable = src.available !== false
                     const isDefault = src.provider === details.defaultProvider
                     const serverNum = src.serverIndex ?? (idx + 1)
-                    const serverLabel = src.label || `Server ${serverNum}`
+
+                    // Map raw provider IDs to user-friendly display names
+                    const providerDisplayName = (() => {
+                      switch ((src.provider || '').toLowerCase()) {
+                        case 'peachify':     return 'Peachify'
+                        case 'streamimdb':   return 'StreamIMDb'
+                        case 'autoembed':    return 'AutoEmbed'
+                        case 'embedsu':      return 'EmbedSU'
+                        case 'vidsrc':       return 'VidSrc'
+                        default: {
+                          // Capitalise first letter of each word as fallback
+                          const n = src.provider || `Server ${serverNum}`
+                          return n.charAt(0).toUpperCase() + n.slice(1)
+                        }
+                      }
+                    })()
+
+                    // Always use the mapped display name — src.label from backend is raw lowercase
+                    const serverLabel = providerDisplayName
+                    const isUnavailable = src.status === 'UNAVAILABLE'
 
                     return (
                       <button
                         key={`${src.provider}-${src.id}-${idx}`}
                         onClick={() => isAvailable ? handlePlay({ provider: src.provider, id: src.id }) : undefined}
-                        title={isAvailable ? `Play from ${serverLabel}` : `${serverLabel} is currently unavailable`}
+                        title={
+                          isAvailable 
+                            ? `Play from ${serverLabel}` 
+                            : isUnavailable 
+                              ? `${serverLabel} - Movie not found on this server` 
+                              : `${serverLabel} is currently offline`
+                        }
                         disabled={!isAvailable}
-                        className={[
-                          'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-bold transition select-none',
-                          isAvailable
-                            ? 'text-emerald-400 border-emerald-500/35 bg-emerald-500/10 hover:bg-emerald-500/20 hover:border-emerald-400/60 cursor-pointer'
-                            : 'text-mz-secondary/50 border-white/8 bg-white/3 cursor-not-allowed opacity-60',
-                          isDefault && isAvailable ? 'ring-1 ring-emerald-400/40' : '',
-                        ].join(' ')}
+                        className={`
+                          inline-flex items-center gap-2.5 rounded-xl border px-4 py-2.5 text-xs font-bold select-none
+                          transition-all duration-300 backdrop-blur-md shadow-md
+                          ${isAvailable
+                            ? isDefault
+                              ? 'bg-mz-primary/8 border-mz-primary/35 text-white hover:border-mz-primary/60 hover:bg-mz-primary/15 hover:scale-[1.03] active:scale-[0.97] cursor-pointer'
+                              : 'bg-white/[0.03] border-white/5 text-white/80 hover:border-white/20 hover:bg-white/10 hover:text-white hover:scale-[1.03] active:scale-[0.97] cursor-pointer'
+                            : 'bg-white/[0.01] border-white/5 text-mz-secondary/30 cursor-not-allowed opacity-40'
+                          }
+                        `}
                       >
-                        <span className={[
-                          'h-1.5 w-1.5 rounded-full',
-                          isAvailable ? 'bg-emerald-400' : 'bg-mz-secondary/30',
-                        ].join(' ')} />
-                        {serverLabel}
+                        <span className={`
+                          h-1.5 w-1.5 rounded-full shrink-0
+                          ${isAvailable 
+                            ? isDefault
+                              ? 'bg-mz-primary animate-pulse shadow-[0_0_8px_var(--mz-primary)]' 
+                              : 'bg-emerald-500 shadow-[0_0_8px_#10b981]' 
+                            : 'bg-white/10'
+                          }
+                        `} />
+                        <span>{serverLabel}</span>
                         {isDefault && isAvailable && (
-                          <span className="ml-1 text-[9px] uppercase tracking-wider opacity-70">Auto</span>
+                          <span className="rounded bg-mz-primary/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-widest text-mz-primary border border-mz-primary/15 scale-95 origin-right">
+                            Auto
+                          </span>
                         )}
                         {!isAvailable && (
-                          <span className="ml-1 text-[9px] uppercase tracking-wider opacity-50">Offline</span>
+                          <span className="rounded bg-white/5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-mz-secondary/30 border border-white/5 scale-95 origin-right">
+                            {isUnavailable ? 'No Link' : 'Offline'}
+                          </span>
                         )}
                       </button>
                     )
@@ -678,50 +720,7 @@ export function DetailPage() {
               </p>
             )}
 
-            {/* Audio Language Dropdown */}
-            {languages.length > 1 && (
-              <div className="mt-6 border-t border-white/5 pt-4 max-w-xs animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <label
-                  htmlFor="audio-language-select"
-                  className="block text-xs font-bold uppercase tracking-widest text-mz-secondary mb-2"
-                >
-                  Audio Language
-                </label>
-                <div className="relative">
-                  <select
-                    id="audio-language-select"
-                    value={selectedLanguage ? `${selectedLanguage.dubSubjectId}:${selectedLanguage.language}` : ''}
-                    onChange={(e) => {
-                      const [dubSubjectId, language] = e.target.value.split(':')
-                      const match = languages.find(
-                        (l) => l.dubSubjectId === dubSubjectId && l.language === language,
-                      )
-                      if (match) {
-                        setSelectedLanguage(match)
-                        if (match.dubSubjectId) {
-                          localStorage.setItem('preferredDubId', match.dubSubjectId)
-                        }
-                        localStorage.setItem('preferredLanguage', match.language)
-                      }
-                    }}
-                    className="w-full appearance-none rounded-xl border border-white/10 bg-mz-card px-4 py-3 pr-10 text-sm font-semibold text-white shadow-lg focus:border-mz-primary focus:outline-none focus:ring-1 focus:ring-mz-primary cursor-pointer transition hover:bg-mz-card/80"
-                  >
-                    {languages.map((lang, index) => (
-                      <option
-                        key={`${lang.dubSubjectId}-${lang.language}-${index}`}
-                        value={`${lang.dubSubjectId}:${lang.language}`}
-                        className="bg-mz-background text-white font-semibold"
-                      >
-                        {lang.language} {lang.isOriginal ? '(Original)' : '(Dub)'}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4 text-mz-secondary">
-                    <ChevronDown className="h-4 w-4" />
-                  </div>
-                </div>
-              </div>
-            )}
+
 
             {/* Play, Download & Trailer Buttons */}
             <div className="mt-8 flex flex-col sm:flex-row sm:items-center gap-3.5 w-full sm:w-auto">
@@ -746,14 +745,14 @@ export function DetailPage() {
                       ? 'Coming Soon'
                       : 'Download'
                 }
-                className="w-full sm:w-auto px-7 py-4 text-base"
+                className="w-full sm:w-auto"
               />
 
               {details.trailer && (
                 <button
                   type="button"
                   onClick={handleTrailer}
-                  className="btn-secondary w-full sm:w-auto px-7 py-4 text-base"
+                  className="btn-secondary w-full sm:w-auto px-8 py-4 text-base"
                 >
                   <Film className="h-5 w-5" />
                   Watch Trailer
@@ -932,6 +931,11 @@ export function DetailPage() {
         selectedLanguage={dl.selectedLanguage}
         selectedQuality={dl.selectedQuality}
         metadata={dl.metadata}
+        downloadProvider={dl.downloadProvider}
+        downloadType={dl.downloadType}
+        availableProviders={dl.availableProviders}
+        activeProvider={dl.activeProvider}
+        onSelectProvider={dl.selectProvider}
         onClose={dl.closeDownload}
         onSelectLanguage={dl.selectLanguage}
         onSelectQuality={dl.selectQuality}

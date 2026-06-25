@@ -22,13 +22,9 @@ export const DownloadButton: React.FC<DownloadButtonProps> = ({
       onClick={onClick}
       disabled={disabled || loading}
       className={`
-        inline-flex items-center justify-center gap-2.5 
-        rounded-xl px-7 py-4 text-base font-bold tracking-wide
+        btn-primary inline-flex items-center justify-center gap-2.5 
+        rounded-full px-8 py-4 text-base font-bold tracking-wide
         transition-all duration-300 select-none cursor-pointer
-        ${disabled || loading
-          ? 'bg-white/5 border border-white/5 text-white/40 cursor-not-allowed opacity-60'
-          : 'bg-mz-primary border border-mz-primary text-white hover:bg-mz-primary-hover shadow-lg hover:shadow-mz-primary/20 hover:scale-[1.02] active:scale-[0.98]'
-        }
         ${className}
       `}
     >
