@@ -23,6 +23,22 @@ export interface ParsedStream {
 export function parseQualityAndLanguage(qualityStr: string, defaultLanguage: string = 'English') {
   const str = qualityStr.trim()
   
+  // Clean up specific composite prefixes first to prevent partial matches (e.g. "Original Audio" -> "Original")
+  const compositePatterns = [
+    { regex: /^Original\s+Audio\b/i, lang: defaultLanguage },
+    { regex: /^Original\s*\/\s*Default\b/i, lang: defaultLanguage }
+  ]
+  
+  for (const pattern of compositePatterns) {
+    if (pattern.regex.test(str)) {
+      const cleanQuality = str.replace(pattern.regex, '').trim()
+      return {
+        language: pattern.lang,
+        quality: cleanQuality || 'Auto'
+      }
+    }
+  }
+  
   const knownLanguages = [
     'Tamil', 'Telugu', 'Hindi', 'English', 'Malayalam', 'Kannada', 
     'Bengali', 'Marathi', 'Punjabi', 'Spanish', 'French', 'German', 
