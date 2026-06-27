@@ -644,6 +644,7 @@ export function DetailPage() {
                     // Map raw provider IDs to user-friendly display names
                     const providerDisplayName = (() => {
                       switch ((src.provider || '').toLowerCase()) {
+                        case 'vidsrc-sbs':   return 'VidSrc SBS'
                         case 'peachify':     return 'Peachify'
                         case 'streamimdb':   return 'StreamIMDb'
                         case 'autoembed':    return 'AutoEmbed'

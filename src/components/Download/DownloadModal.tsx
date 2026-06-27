@@ -205,7 +205,8 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
                 <div className="flex flex-wrap gap-2.5">
                   {availableProviders.map((prov) => {
                     const isSelected = activeProvider === prov.provider
-                    const displayName = prov.provider === 'peachify' ? 'Peachify' :
+                    const displayName = prov.provider === 'vidsrc-sbs' ? 'VidSrc SBS' :
+                                        prov.provider === 'peachify' ? 'Peachify' :
                                         prov.provider === 'streamimdb' ? 'StreamIMDb' :
                                         prov.provider === 'autoembed' ? 'AutoEmbed' :
                                         prov.provider === 'embedsu' ? 'EmbedSU' :

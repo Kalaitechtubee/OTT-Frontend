@@ -171,6 +171,7 @@ export function PlayerPage() {
   }
 
   const [providerStates, setProviderStates] = useState<ProviderState[]>([
+    { name: 'vidsrc-sbs', displayName: 'VidSrc SBS', status: 'WAITING' },
     { name: 'peachify', displayName: 'Peachify', status: 'WAITING' },
     { name: 'streamimdb', displayName: 'StreamIMDb', status: 'WAITING' },
     { name: 'autoembed', displayName: 'AutoEmbed', status: 'WAITING' },
@@ -269,7 +270,8 @@ export function PlayerPage() {
                 if (event.status === 'STARTING') {
                   const list = event.providers.map((name: string) => ({
                     name,
-                    displayName: name === 'peachify' ? 'Peachify' :
+                    displayName: name === 'vidsrc-sbs' ? 'VidSrc SBS' :
+                                 name === 'peachify' ? 'Peachify' :
                                  name === 'streamimdb' ? 'StreamIMDb' :
                                  name === 'autoembed' ? 'AutoEmbed' :
                                  name === 'embedsu' ? 'EmbedSU' :
@@ -327,7 +329,8 @@ export function PlayerPage() {
           setProviderStates([
             {
               name: provider,
-              displayName: provider === 'peachify' ? 'Peachify' :
+              displayName: provider === 'vidsrc-sbs' ? 'VidSrc SBS' :
+                           provider === 'peachify' ? 'Peachify' :
                            provider === 'streamimdb' ? 'StreamIMDb' :
                            provider === 'autoembed' ? 'AutoEmbed' :
                            provider === 'embedsu' ? 'EmbedSU' :
@@ -1485,18 +1488,54 @@ export function PlayerPage() {
 
   const activeEmbedUrl = useMemo(() => {
     if (!rawActiveEmbedUrl) return ''
-    if (rawActiveEmbedUrl.includes('peachify.top') || rawActiveEmbedUrl.includes('eat-peach.sbs')) {
-      try {
-        const urlObj = new URL(rawActiveEmbedUrl)
+    let finalUrl = rawActiveEmbedUrl
+    try {
+      const urlObj = new URL(rawActiveEmbedUrl)
+      const host = urlObj.hostname.toLowerCase()
+      const deadDomains = [
+        'vidsrc.me', 'vidsrc.xyz', 'vidsrc.in', 'vidsrc.pm', 'vidsrc.net',
+        'vidsrc.io', 'vidsrc.vc', 'vidsrc.bz', 'vidsrc.gd', 'vidsrc.do',
+        'vidsrc.mn', 'vidsrc.tw'
+      ]
+      
+      const isDead = deadDomains.some(d => host === d || host.endsWith('.' + d))
+      if (isDead) {
+        const tmdbId = urlObj.searchParams.get('tmdb') || urlObj.searchParams.get('id') || tmdbIdParam || ''
+        const isTv = urlObj.pathname.includes('/tv') || urlObj.searchParams.has('season') || mediaTypeParam === 'tv'
+        
+        if (tmdbId) {
+          if (isTv) {
+            const s = urlObj.searchParams.get('season') || urlObj.searchParams.get('s') || '1'
+            const e = urlObj.searchParams.get('episode') || urlObj.searchParams.get('e') || '1'
+            finalUrl = `https://vidsrc.sbs/embed/tv/${tmdbId}/${s}/${e}/?autoplay=1&color=e50914`
+          } else {
+            finalUrl = `https://vidsrc.sbs/embed/movie/${tmdbId}/?autoplay=1&color=e50914`
+          }
+        } else {
+          const segments = urlObj.pathname.split('/').filter(Boolean)
+          if (segments.length >= 2) {
+            const type = segments[0]
+            const id = segments[1]
+            if (type === 'tv' && segments.length >= 4) {
+              finalUrl = `https://vidsrc.sbs/embed/tv/${id}/${segments[2]}/${segments[3]}/?autoplay=1&color=e50914`
+            } else {
+              finalUrl = `https://vidsrc.sbs/embed/movie/${id}/?autoplay=1&color=e50914`
+            }
+          }
+        }
+      } else if (host.includes('vidsrc.sbs')) {
+        urlObj.searchParams.set('autoplay', '1')
+        urlObj.searchParams.set('color', 'e50914')
+        finalUrl = urlObj.toString()
+      } else if (host.includes('peachify.top') || host.includes('eat-peach.sbs')) {
         urlObj.searchParams.set('accent', primaryColorHex)
-        return urlObj.toString()
-      } catch {
-        const separator = rawActiveEmbedUrl.includes('?') ? '&' : '?'
-        return `${rawActiveEmbedUrl}${separator}accent=${primaryColorHex}`
+        finalUrl = urlObj.toString()
       }
+    } catch (e) {
+      console.warn("URL rewriting failed:", e)
     }
-    return rawActiveEmbedUrl
-  }, [rawActiveEmbedUrl, primaryColorHex])
+    return finalUrl
+  }, [rawActiveEmbedUrl, primaryColorHex, tmdbIdParam, mediaTypeParam])
 
 
 
@@ -1529,7 +1568,8 @@ export function PlayerPage() {
           <span>{title}</span>
           {activePlayingProvider && (
             <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/20 shadow-sm uppercase tracking-wider">
-              Playing via {activePlayingProvider === 'peachify' ? 'Peachify' :
+              Playing via {activePlayingProvider === 'vidsrc-sbs' ? 'VidSrc SBS' :
+                           activePlayingProvider === 'peachify' ? 'Peachify' :
                            activePlayingProvider === 'streamimdb' ? 'StreamIMDb' :
                            activePlayingProvider === 'autoembed' ? 'AutoEmbed' :
                            activePlayingProvider === 'embedsu' ? 'EmbedSU' :
@@ -1702,6 +1742,7 @@ export function PlayerPage() {
                         const srcHost = (() => {
                           try {
                             const host = new URL(src).hostname.replace('www.', '').toLowerCase()
+                            if (host.includes('vidsrc.sbs')) return 'VidSrc SBS'
                             if (host.includes('vidsrc-embed.ru')) return 'VidSrc (RU)'
                             if (host.includes('vidsrc-embed.su')) return 'VidSrc (SU)'
                             if (host.includes('vsembed.su')) return 'VidSrc (VS)'
