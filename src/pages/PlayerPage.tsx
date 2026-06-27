@@ -1500,26 +1500,26 @@ export function PlayerPage() {
       
       const isDead = deadDomains.some(d => host === d || host.endsWith('.' + d))
       if (isDead) {
-        const tmdbId = urlObj.searchParams.get('tmdb') || urlObj.searchParams.get('id') || tmdbIdParam || ''
-        const isTv = urlObj.pathname.includes('/tv') || urlObj.searchParams.has('season') || mediaTypeParam === 'tv'
+        const tmdbIdVal = urlObj.searchParams.get('tmdb') || urlObj.searchParams.get('id') || tmdbId || ''
+        const isTv = urlObj.pathname.includes('/tv') || urlObj.searchParams.has('season') || mediaType === 'tv'
         
-        if (tmdbId) {
+        if (tmdbIdVal) {
           if (isTv) {
             const s = urlObj.searchParams.get('season') || urlObj.searchParams.get('s') || '1'
             const e = urlObj.searchParams.get('episode') || urlObj.searchParams.get('e') || '1'
-            finalUrl = `https://vidsrc.sbs/embed/tv/${tmdbId}/${s}/${e}/?autoplay=1&color=e50914`
+            finalUrl = `https://vidsrc.sbs/embed/tv/${tmdbIdVal}/${s}/${e}/?autoplay=1&color=e50914`
           } else {
-            finalUrl = `https://vidsrc.sbs/embed/movie/${tmdbId}/?autoplay=1&color=e50914`
+            finalUrl = `https://vidsrc.sbs/embed/movie/${tmdbIdVal}/?autoplay=1&color=e50914`
           }
         } else {
           const segments = urlObj.pathname.split('/').filter(Boolean)
           if (segments.length >= 2) {
-            const type = segments[0]
-            const id = segments[1]
-            if (type === 'tv' && segments.length >= 4) {
-              finalUrl = `https://vidsrc.sbs/embed/tv/${id}/${segments[2]}/${segments[3]}/?autoplay=1&color=e50914`
+            const typeSegment = segments[0]
+            const idSegment = segments[1]
+            if (typeSegment === 'tv' && segments.length >= 4) {
+              finalUrl = `https://vidsrc.sbs/embed/tv/${idSegment}/${segments[2]}/${segments[3]}/?autoplay=1&color=e50914`
             } else {
-              finalUrl = `https://vidsrc.sbs/embed/movie/${id}/?autoplay=1&color=e50914`
+              finalUrl = `https://vidsrc.sbs/embed/movie/${idSegment}/?autoplay=1&color=e50914`
             }
           }
         }
@@ -1535,7 +1535,7 @@ export function PlayerPage() {
       console.warn("URL rewriting failed:", e)
     }
     return finalUrl
-  }, [rawActiveEmbedUrl, primaryColorHex, tmdbIdParam, mediaTypeParam])
+  }, [rawActiveEmbedUrl, primaryColorHex, tmdbId, mediaType])
 
 
 
