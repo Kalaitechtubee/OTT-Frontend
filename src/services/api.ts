@@ -98,9 +98,7 @@ export async function getStreamV2(
 ): Promise<V2StreamResult> {
   try {
     const params: Record<string, string> = {}
-    if (sources && sources.length > 0) {
-      params.sources = sources.map((s) => `${s.provider}:${s.id}`).join(',')
-    }
+
     if (dub) {
       params.dub = dub
       params.variant = dub
