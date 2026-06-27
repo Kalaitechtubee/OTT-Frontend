@@ -1730,8 +1730,8 @@ export function PlayerPage() {
                   <iframe
                     src={activeEmbedUrl}
                     className="h-full w-full border-0 bg-black"
-                    allowFullScreen
                     allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                    sandbox="allow-scripts allow-same-origin allow-forms"
                   />
                   
                   {/* Source switcher toolbar — shown only when multiple embed sources are available */}
