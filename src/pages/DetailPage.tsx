@@ -625,7 +625,7 @@ export function DetailPage() {
             )}
 
             {/* Streaming server status indicators — ALL providers, availability from backend pipeline */}
-            {details.sources && details.sources.length > 0 && (
+            {details.sources && details.sources.some(src => src.available) && (
               <div className="mt-6 border-t border-white/5 pt-5">
                 <div className="flex flex-col gap-1">
                   <p className="text-xs font-extrabold uppercase tracking-widest text-mz-secondary">
@@ -636,7 +636,7 @@ export function DetailPage() {
                   </p>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-3">
-                  {details.sources.map((src, idx) => {
+                  {details.sources.filter(src => src.available).map((src, idx) => {
                     const isAvailable = src.available !== false
                     const isDefault = src.provider === details.defaultProvider
                     const serverNum = src.serverIndex ?? (idx + 1)
