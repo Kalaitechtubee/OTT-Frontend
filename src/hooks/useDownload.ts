@@ -108,6 +108,7 @@ export function useDownload() {
     episode?: number
     variant?: string
   } | null>(null)
+  const [moviesdaStreams, setMoviesdaStreams] = useState<ParsedStream[]>([])
 
   const loadProviderStreams = useCallback(async (
     provider: string,
@@ -191,53 +192,131 @@ export function useDownload() {
     setDownloadProvider(null)
     setDownloadType(null)
     setMetadata(meta)
-    setAvailableProviders(sources)
     setCurrentParams({ tmdbId, type, season, episode, variant })
- 
+    setMoviesdaStreams([])
+
+    // Fetch Moviesda scraper downloads in parallel for movies
+    let moviesdaList: ParsedStream[] = []
+    if (type === 'movie') {
+      try {
+        const queryTitle = meta.title.split(' (')[0].trim()
+        const queryYear = meta.year ? meta.year.split('-')[0].trim() : ''
+        const url = `/api/moviesda/download?title=${encodeURIComponent(queryTitle)}` + (queryYear ? `&year=${queryYear}` : '')
+        const mRes = await fetch(url).then(res => res.json())
+        if (mRes.ok && mRes.found && mRes.qualities) {
+          for (const q of mRes.qualities) {
+            for (const f of q.files) {
+              if (f.downloadUrl) {
+                const cleanQ = q.quality.replace(/hd|original|rip/gi, '').trim() || '720p'
+                moviesdaList.push({
+                  language: 'Tamil (Local)',
+                  quality: cleanQ,
+                  url: f.downloadUrl,
+                  size: f.size || '980 MB',
+                  codec: f.format ? f.format.toUpperCase() : 'MP4',
+                  originalQuality: `${q.quality} - ${f.name}`
+                })
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[Moviesda Scraper] Failed to fetch:', e)
+      }
+    }
+
+    setMoviesdaStreams(moviesdaList)
+
+    const updatedSources = [...sources]
+    if (moviesdaList.length > 0) {
+      updatedSources.push({
+        provider: 'moviesda',
+        id: tmdbId,
+        label: 'Moviesda Scraper 🐯'
+      })
+    }
+    setAvailableProviders(updatedSources)
+
     try {
       const result = await fetchDownloadDetails(tmdbId, type, season, episode, variant)
-      if (!result.success || !result.streams || result.streams.length === 0) {
-        throw new Error('No download streams are available for this title.')
-      }
- 
-      const resolvedProvider = result.provider || result.selectedProvider || null
-      setDownloadProvider(resolvedProvider)
-      setActiveProvider(resolvedProvider)
-      setDownloadType(result.streamType || (result.stream as any)?.streamType || 'native')
- 
-      // Map raw streams to ParsedStreams
-      const mapped: ParsedStream[] = result.streams.map((s: V2Stream) => {
-        const { language, quality } = parseQualityAndLanguage(s.quality)
-        const { size, codec } = estimateStreamMeta(quality)
-        return {
-          language,
-          quality,
-          url: s.url,
-          size,
-          codec,
-          originalQuality: s.quality
-        }
-      })
- 
-      // Get unique languages
-      const uniqueLangs = Array.from(new Set(mapped.map(s => s.language)))
-      
-      setParsedStreams(mapped)
-      setLanguages(uniqueLangs)
-      
-      // Auto-select first language and quality if available
-      if (uniqueLangs.length > 0) {
-        const defaultLang = uniqueLangs.includes('English') ? 'English' : uniqueLangs[0]
-        setSelectedLanguage(defaultLang)
+      if (result && result.success && result.streams && result.streams.length > 0) {
+        const resolvedProvider = result.provider || result.selectedProvider || null
+        setDownloadProvider(resolvedProvider)
+        setActiveProvider(resolvedProvider)
+        setDownloadType(result.streamType || (result.stream as any)?.streamType || 'native')
+
+        // Map raw streams to ParsedStreams
+        const mapped: ParsedStream[] = result.streams.map((s: V2Stream) => {
+          const { language, quality } = parseQualityAndLanguage(s.quality)
+          const { size, codec } = estimateStreamMeta(quality)
+          return {
+            language,
+            quality,
+            url: s.url,
+            size,
+            codec,
+            originalQuality: s.quality
+          }
+        })
+
+        // Get unique languages
+        const uniqueLangs = Array.from(new Set(mapped.map(s => s.language)))
         
-        const langStreams = mapped.filter(s => s.language === defaultLang)
-        if (langStreams.length > 0) {
-          setSelectedQuality(langStreams[0].quality)
+        setParsedStreams(mapped)
+        setLanguages(uniqueLangs)
+        
+        // Auto-select first language and quality if available
+        if (uniqueLangs.length > 0) {
+          const defaultLang = uniqueLangs.includes('English') ? 'English' : uniqueLangs[0]
+          setSelectedLanguage(defaultLang)
+          
+          const langStreams = mapped.filter(s => s.language === defaultLang)
+          if (langStreams.length > 0) {
+            setSelectedQuality(langStreams[0].quality)
+          }
+        }
+      } else {
+        // HLS resolution returned no streams. Fall back to Moviesda if available.
+        if (moviesdaList.length > 0) {
+          setDownloadProvider('moviesda')
+          setActiveProvider('moviesda')
+          setDownloadType('scraper')
+          setParsedStreams(moviesdaList)
+
+          const uniqueLangs = Array.from(new Set(moviesdaList.map(s => s.language)))
+          setLanguages(uniqueLangs)
+          if (uniqueLangs.length > 0) {
+            setSelectedLanguage(uniqueLangs[0])
+            const langStreams = moviesdaList.filter(s => s.language === uniqueLangs[0])
+            if (langStreams.length > 0) {
+              setSelectedQuality(langStreams[0].quality)
+            }
+          }
+        } else {
+          throw new Error('No download streams are available for this title.')
         }
       }
     } catch (err) {
-      console.error('[useDownload] Fetch failed:', err)
-      setError(err instanceof Error ? err.message : 'Failed to retrieve download configurations.')
+      // HLS resolution failed. Fall back to Moviesda if available.
+      if (moviesdaList.length > 0) {
+        setDownloadProvider('moviesda')
+        setActiveProvider('moviesda')
+        setDownloadType('scraper')
+        setParsedStreams(moviesdaList)
+
+        const uniqueLangs = Array.from(new Set(moviesdaList.map(s => s.language)))
+        setLanguages(uniqueLangs)
+        if (uniqueLangs.length > 0) {
+          setSelectedLanguage(uniqueLangs[0])
+          const langStreams = moviesdaList.filter(s => s.language === uniqueLangs[0])
+          if (langStreams.length > 0) {
+            setSelectedQuality(langStreams[0].quality)
+          }
+        }
+      } else {
+        console.error('[useDownload] Fetch failed:', err)
+        setError(err instanceof Error ? err.message : 'Failed to retrieve download configurations.')
+      }
     } finally {
       setLoading(false)
     }
@@ -256,6 +335,7 @@ export function useDownload() {
     setCurrentParams(null)
     setAvailableProviders([])
     setActiveProvider(null)
+    setMoviesdaStreams([])
   }, [])
  
   const retry = useCallback(() => {
@@ -278,14 +358,30 @@ export function useDownload() {
     if (!targetSource) return
 
     setActiveProvider(providerName)
-    await loadProviderStreams(
-      providerName,
-      targetSource.id,
-      currentParams.season,
-      currentParams.episode,
-      currentParams.variant
-    )
-  }, [availableProviders, currentParams, loadProviderStreams])
+    if (providerName === 'moviesda') {
+      setDownloadProvider('moviesda')
+      setDownloadType('scraper')
+      setParsedStreams(moviesdaStreams)
+
+      const uniqueLangs = Array.from(new Set(moviesdaStreams.map(s => s.language)))
+      setLanguages(uniqueLangs)
+      if (uniqueLangs.length > 0) {
+        setSelectedLanguage(uniqueLangs[0])
+        const langStreams = moviesdaStreams.filter(s => s.language === uniqueLangs[0])
+        if (langStreams.length > 0) {
+          setSelectedQuality(langStreams[0].quality)
+        }
+      }
+    } else {
+      await loadProviderStreams(
+        providerName,
+        targetSource.id,
+        currentParams.season,
+        currentParams.episode,
+        currentParams.variant
+      )
+    }
+  }, [availableProviders, currentParams, loadProviderStreams, moviesdaStreams])
  
   const selectLanguage = useCallback((lang: string) => {
     setSelectedLanguage(lang)
@@ -333,6 +429,7 @@ export function useDownload() {
     availableProviders,
     activeProvider,
     toast,
+    currentParams,
     openDownload,
     closeDownload,
     selectLanguage,

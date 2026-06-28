@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
-import { ChevronLeft, Film, Star, Play, HelpCircle } from 'lucide-react'
+import { ChevronLeft, Film, Star, Play, HelpCircle, Download } from 'lucide-react'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { FeedbackBanner } from '@/components/common/FeedbackBanner'
 import { CastSection } from '@/components/detail/CastSection'
@@ -177,6 +177,7 @@ export function DetailPage() {
 
   const [feedback, setFeedback] = useState<string | null>(null)
   const [trailerKey, setTrailerKey] = useState<string | null>(null)
+  const [isOffline, setIsOffline] = useState(false)
 
   const [selectedSeason, setSelectedSeason] = useState<number>(1)
   const [episodes, setEpisodes] = useState<any[]>([])
@@ -197,9 +198,10 @@ export function DetailPage() {
   )
 
   const isDownloadSupported = !!(
-    details &&
-    details.sources &&
-    details.sources.some((s) => s.available && s.downloadSupported)
+    (details &&
+      details.sources &&
+      details.sources.some((s) => s.available && s.downloadSupported)) ||
+    (details && details.mediaType === 'movie')
   )
 
   // Fetch Details in the background
@@ -370,6 +372,86 @@ export function DetailPage() {
       },
       undefined,
       undefined,
+      variantId,
+      downloadSources
+    )
+  }
+
+  const handleDownloadSubmit = async () => {
+    if (!details || !dl.selectedLanguage || !dl.selectedQuality) return
+
+    const activeStream = dl.parsedStreams.find(
+      (s) => s.language === dl.selectedLanguage && s.quality === dl.selectedQuality
+    )
+    if (!activeStream) return
+
+    const resolution = parseV2Quality(activeStream.quality)
+    const downloadProvider = dl.activeProvider || activeProvider
+    const matchedSource = dl.availableProviders.find(p => p.provider === downloadProvider)
+    const downloadId = matchedSource ? matchedSource.id : (activeId || details.id)
+
+    setFeedback('Starting download...')
+    dl.closeDownload()
+
+    const ok = await startDownload({
+      tmdbId: details.tmdbId ? Number(details.tmdbId) : 0,
+      title: dl.metadata?.title || details.title,
+      type: (details.mediaType as 'movie' | 'tv') || 'movie',
+      posterPath: details.poster ?? undefined,
+      resolution,
+      quality: activeStream.originalQuality || activeStream.quality,
+      language: dl.selectedLanguage,
+      isOffline,
+      provider: downloadProvider,
+      id: downloadId,
+      season: dl.currentParams?.season,
+      episode: dl.currentParams?.episode,
+      dub: (selectedLanguage?.dubSubjectId && selectedLanguage.dubSubjectId !== String(details.tmdbId) && selectedLanguage.dubSubjectId !== details.id) ? selectedLanguage.dubSubjectId : undefined,
+      url: activeStream.url,
+    })
+
+    if (ok) {
+      setFeedback(
+        isOffline
+          ? `Offline download started for "${dl.metadata?.title || details.title}" (${activeStream.quality}). View progress in My List → Downloads.`
+          : `Download started for "${dl.metadata?.title || details.title}" (${activeStream.quality}). Check your browser downloads folder.`,
+      )
+    } else {
+      setFeedback('Download failed. Please try again.')
+    }
+  }
+
+  const handleDownloadEpisode = (episode: any) => {
+    if (!details) {
+      setFeedback('Streaming sources are currently unavailable for this episode.')
+      return
+    }
+
+    const tmdbTarget = String(details.tmdbId || details.id)
+    if (!tmdbTarget) {
+      setFeedback('Streaming sources are currently unavailable for this episode.')
+      return
+    }
+
+    const variantId = selectedLanguage?.dubSubjectId && selectedLanguage.dubSubjectId !== ''
+      ? selectedLanguage.dubSubjectId
+      : undefined
+
+    const downloadSources = details.sources?.filter(s => s.available && s.downloadSupported) || []
+    
+    const episodeTitleFormatted = `${details.title} - S${selectedSeason}E${episode.episode_number} - ${episode.name}`
+
+    dl.openDownload(
+      tmdbTarget,
+      'tv',
+      {
+        title: episodeTitleFormatted,
+        poster: details.poster,
+        year: episode.air_date ? episode.air_date.substring(0, 4) : details.year,
+        runtime: episode.runtime || details.duration
+      },
+      selectedSeason,
+      episode.episode_number,
       variantId,
       downloadSources
     )
@@ -869,18 +951,34 @@ export function DetailPage() {
                             {hasEpSource ? 'Ready to watch' : 'Sources offline'}
                           </span>
 
-                          <button
-                            type="button"
-                            disabled={playing || !hasEpSource}
-                            onClick={() => handlePlayEpisode(ep)}
-                            className={`inline-flex items-center gap-1.5 rounded-full px-4.5 py-1.5 text-xs font-bold transition duration-300 cursor-pointer ${hasEpSource
-                              ? 'bg-mz-primary/15 border border-mz-primary/30 text-white hover:bg-mz-primary hover:border-mz-primary shadow-sm hover:scale-[1.02]'
-                              : 'bg-white/5 text-white/45 border border-white/5 cursor-not-allowed'
-                              }`}
-                          >
-                            <Play className="h-3 w-3 fill-current" />
-                            Play
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={playing || !hasEpSource}
+                              onClick={() => handleDownloadEpisode(ep)}
+                              className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold transition duration-300 cursor-pointer ${hasEpSource
+                                ? 'bg-mz-card border border-white/10 text-white hover:bg-white/10 shadow-sm hover:scale-[1.02]'
+                                : 'bg-white/5 text-white/45 border border-white/5 cursor-not-allowed'
+                                }`}
+                              title="Download Episode"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              Download
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={playing || !hasEpSource}
+                              onClick={() => handlePlayEpisode(ep)}
+                              className={`inline-flex items-center gap-1.5 rounded-full px-4.5 py-1.5 text-xs font-bold transition duration-300 cursor-pointer ${hasEpSource
+                                ? 'bg-mz-primary/15 border border-mz-primary/30 text-white hover:bg-mz-primary hover:border-mz-primary shadow-sm hover:scale-[1.02]'
+                                : 'bg-white/5 text-white/45 border border-white/5 cursor-not-allowed'
+                                }`}
+                            >
+                              <Play className="h-3 w-3 fill-current" />
+                              Play
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -940,8 +1038,10 @@ export function DetailPage() {
         onClose={dl.closeDownload}
         onSelectLanguage={dl.selectLanguage}
         onSelectQuality={dl.selectQuality}
-        onDownload={dl.triggerDownload}
+        onDownload={handleDownloadSubmit}
         onRetry={dl.retry}
+        isOffline={isOffline}
+        onToggleOffline={setIsOffline}
       />
 
       {/* Floating success toast */}

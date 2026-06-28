@@ -18,6 +18,8 @@ interface DownloadModalProps {
   downloadType?: string | null
   availableProviders?: { provider: string; id: string; label?: string }[]
   activeProvider?: string | null
+  isOffline?: boolean
+  onToggleOffline?: (offline: boolean) => void
   onSelectProvider?: (provider: string) => void
   onClose: () => void
   onSelectLanguage: (lang: string) => void
@@ -39,6 +41,8 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
   downloadType,
   availableProviders,
   activeProvider,
+  isOffline = false,
+  onToggleOffline,
   onSelectProvider,
   onClose,
   onSelectLanguage,
@@ -261,6 +265,27 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Offline Playback Toggle */}
+            <div className="flex items-center justify-between rounded-2xl bg-white/[0.02] border border-white/5 p-4">
+              <div className="space-y-0.5 pr-4">
+                <span className="block text-xs font-bold text-white uppercase tracking-wider">
+                  Save to Library (Offline Playback)
+                </span>
+                <span className="block text-2xs text-mz-secondary leading-normal font-medium">
+                  Saves the video in this browser's offline storage for playback without internet.
+                </span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isOffline}
+                  onChange={(e) => onToggleOffline?.(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-white/10 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-mz-primary"></div>
+              </label>
             </div>
 
             {/* Action Bar */}

@@ -42,6 +42,7 @@ interface StartDownloadParams {
   sid?: string
   dp?: string
   dub?: string
+  url?: string
 }
 
 interface DownloadState {
@@ -66,6 +67,9 @@ function makeDownloadId(params: StartDownloadParams): string {
 async function fetchFreshDownloadUrl(
   params: StartDownloadParams,
 ): Promise<string> {
+  if (params.url) {
+    return params.url
+  }
   if (params.provider && params.id) {
     let result
     if (params.provider === 'tmdb') {

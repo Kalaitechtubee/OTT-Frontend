@@ -90,7 +90,7 @@ export async function getDetailsV2(
 export async function getStreamV2(
   provider: Provider,
   id: string,
-  sources?: { provider: string; id: string }[],
+  _sources?: { provider: string; id: string }[],
   dub?: string,
   season?: number,
   episode?: number,
