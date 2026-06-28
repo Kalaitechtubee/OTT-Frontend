@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
-import { fetchDownloadDetails } from '@/services/downloadApi'
 import { getDownloadV2 } from '@/services/api'
+import { buildApiUrl } from '@/services/apiClient'
 import type { V2Stream } from '@/types/v2'
 
 export interface DownloadMetadata {
@@ -180,7 +180,7 @@ export function useDownload() {
     season?: number,
     episode?: number,
     variant?: string,
-    sources: { provider: string; id: string; label?: string }[] = []
+    _sources: { provider: string; id: string; label?: string }[] = []
   ) => {
     setIsOpen(true)
     setLoading(true)
@@ -201,20 +201,24 @@ export function useDownload() {
       try {
         const queryTitle = meta.title.split(' (')[0].trim()
         const queryYear = meta.year ? meta.year.split('-')[0].trim() : ''
-        const url = `/api/moviesda/download?title=${encodeURIComponent(queryTitle)}` + (queryYear ? `&year=${queryYear}` : '')
+        const url = buildApiUrl('/api/moviesda/download', {
+          title: queryTitle,
+          ...(queryYear && { year: queryYear })
+        })
         const mRes = await fetch(url).then(res => res.json())
         if (mRes.ok && mRes.found && mRes.qualities) {
           for (const q of mRes.qualities) {
             for (const f of q.files) {
               if (f.downloadUrl) {
-                const cleanQ = q.quality.replace(/hd|original|rip/gi, '').trim() || '720p'
+                const rawQuality = q.label || q.quality || '720p'
+                const cleanQ = rawQuality.replace(/hd|original|rip/gi, '').trim() || '720p'
                 moviesdaList.push({
                   language: 'Tamil (Local)',
                   quality: cleanQ,
                   url: f.downloadUrl,
                   size: f.size || '980 MB',
                   codec: f.format ? f.format.toUpperCase() : 'MP4',
-                  originalQuality: `${q.quality} - ${f.name}`
+                  originalQuality: `${rawQuality} - ${f.name}`
                 })
               }
             }
@@ -227,7 +231,7 @@ export function useDownload() {
 
     setMoviesdaStreams(moviesdaList)
 
-    const updatedSources = [...sources]
+    const updatedSources = []
     if (moviesdaList.length > 0) {
       updatedSources.push({
         provider: 'moviesda',
@@ -238,66 +242,6 @@ export function useDownload() {
     setAvailableProviders(updatedSources)
 
     try {
-      const result = await fetchDownloadDetails(tmdbId, type, season, episode, variant)
-      if (result && result.success && result.streams && result.streams.length > 0) {
-        const resolvedProvider = result.provider || result.selectedProvider || null
-        setDownloadProvider(resolvedProvider)
-        setActiveProvider(resolvedProvider)
-        setDownloadType(result.streamType || (result.stream as any)?.streamType || 'native')
-
-        // Map raw streams to ParsedStreams
-        const mapped: ParsedStream[] = result.streams.map((s: V2Stream) => {
-          const { language, quality } = parseQualityAndLanguage(s.quality)
-          const { size, codec } = estimateStreamMeta(quality)
-          return {
-            language,
-            quality,
-            url: s.url,
-            size,
-            codec,
-            originalQuality: s.quality
-          }
-        })
-
-        // Get unique languages
-        const uniqueLangs = Array.from(new Set(mapped.map(s => s.language)))
-        
-        setParsedStreams(mapped)
-        setLanguages(uniqueLangs)
-        
-        // Auto-select first language and quality if available
-        if (uniqueLangs.length > 0) {
-          const defaultLang = uniqueLangs.includes('English') ? 'English' : uniqueLangs[0]
-          setSelectedLanguage(defaultLang)
-          
-          const langStreams = mapped.filter(s => s.language === defaultLang)
-          if (langStreams.length > 0) {
-            setSelectedQuality(langStreams[0].quality)
-          }
-        }
-      } else {
-        // HLS resolution returned no streams. Fall back to Moviesda if available.
-        if (moviesdaList.length > 0) {
-          setDownloadProvider('moviesda')
-          setActiveProvider('moviesda')
-          setDownloadType('scraper')
-          setParsedStreams(moviesdaList)
-
-          const uniqueLangs = Array.from(new Set(moviesdaList.map(s => s.language)))
-          setLanguages(uniqueLangs)
-          if (uniqueLangs.length > 0) {
-            setSelectedLanguage(uniqueLangs[0])
-            const langStreams = moviesdaList.filter(s => s.language === uniqueLangs[0])
-            if (langStreams.length > 0) {
-              setSelectedQuality(langStreams[0].quality)
-            }
-          }
-        } else {
-          throw new Error('No download streams are available for this title.')
-        }
-      }
-    } catch (err) {
-      // HLS resolution failed. Fall back to Moviesda if available.
       if (moviesdaList.length > 0) {
         setDownloadProvider('moviesda')
         setActiveProvider('moviesda')
@@ -314,9 +258,11 @@ export function useDownload() {
           }
         }
       } else {
-        console.error('[useDownload] Fetch failed:', err)
-        setError(err instanceof Error ? err.message : 'Failed to retrieve download configurations.')
+        throw new Error('No download streams are available for this title.')
       }
+    } catch (err) {
+      console.error('[useDownload] Fetch failed:', err)
+      setError(err instanceof Error ? err.message : 'Failed to retrieve download configurations.')
     } finally {
       setLoading(false)
     }

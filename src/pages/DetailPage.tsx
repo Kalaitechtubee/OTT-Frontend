@@ -197,12 +197,7 @@ export function DetailPage() {
     (details && details.sources && details.sources.length > 0)
   )
 
-  const isDownloadSupported = !!(
-    (details &&
-      details.sources &&
-      details.sources.some((s) => s.available && s.downloadSupported)) ||
-    (details && details.mediaType === 'movie')
-  )
+  const isDownloadSupported = !!(details && details.mediaType === 'movie')
 
   // Fetch Details in the background
   useEffect(() => {
