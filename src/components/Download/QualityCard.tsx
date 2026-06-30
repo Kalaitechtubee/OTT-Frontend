@@ -1,5 +1,5 @@
 import React from 'react'
-import { CheckCircle2, AlertTriangle, Cpu, HardDrive } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import type { ParsedStream } from '@/hooks/useDownload'
 
 interface QualityCardProps {
@@ -8,81 +8,103 @@ interface QualityCardProps {
   onClick: () => void
 }
 
-export const QualityCard: React.FC<QualityCardProps> = ({
-  stream,
-  isSelected,
-  onClick,
-}) => {
-  // Parse numeric size from "1.8 GB" or "980 MB" to check if > 2GB
+// Quality badge color map
+const QUALITY_COLORS: Record<string, { bg: string; text: string; ring: string }> = {
+  '4K':     { bg: 'bg-violet-500/15', text: 'text-violet-400', ring: 'ring-violet-500/30' },
+  '2160p':  { bg: 'bg-violet-500/15', text: 'text-violet-400', ring: 'ring-violet-500/30' },
+  '1080p':  { bg: 'bg-blue-500/15',   text: 'text-blue-400',   ring: 'ring-blue-500/30' },
+  '720p':   { bg: 'bg-emerald-500/15',text: 'text-emerald-400',ring: 'ring-emerald-500/30' },
+  '480p':   { bg: 'bg-amber-500/15',  text: 'text-amber-400',  ring: 'ring-amber-500/30' },
+  '360p':   { bg: 'bg-orange-500/15', text: 'text-orange-400', ring: 'ring-orange-500/30' },
+}
+
+function getQualityColor(quality: string) {
+  for (const [key, val] of Object.entries(QUALITY_COLORS)) {
+    if (quality.toLowerCase().includes(key.toLowerCase())) return val
+  }
+  return { bg: 'bg-white/10', text: 'text-white/70', ring: 'ring-white/20' }
+}
+
+export const QualityCard: React.FC<QualityCardProps> = ({ stream, isSelected, onClick }) => {
   const isLarge = (() => {
-    const sizeStr = stream.size.toLowerCase()
-    if (sizeStr.includes('gb')) {
-      const val = parseFloat(sizeStr)
-      return val >= 2.0
-    }
+    const s = stream.size.toLowerCase()
+    if (s.includes('gb')) return parseFloat(s) >= 2.0
     return false
   })()
+
+  const qColor = getQualityColor(stream.quality)
 
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-checked={isSelected}
-      role="radio"
+      aria-pressed={isSelected}
       className={`
-        w-full text-left flex flex-col sm:flex-row sm:items-center sm:justify-between
-        rounded-2xl p-4.5 border transition-all duration-300 outline-none select-none cursor-pointer gap-4
+        group w-full text-left rounded-2xl border transition-all duration-200
+        outline-none select-none cursor-pointer relative overflow-hidden
         ${isSelected
-          ? 'bg-mz-primary/[0.08] border-mz-primary ring-1 ring-mz-primary/25 shadow-lg shadow-mz-primary/5'
-          : 'bg-mz-card border-white/5 hover:bg-white/[0.03] hover:border-white/10 focus-visible:border-white/15'
+          ? 'border-mz-primary bg-gradient-to-br from-mz-primary/10 to-mz-primary/5 shadow-[0_0_25px_rgba(229,9,20,0.12)]'
+          : 'border-white/6 bg-white/[0.025] hover:bg-white/[0.045] hover:border-white/12'
         }
       `}
     >
-      <div className="flex items-start gap-4">
-        {/* Active Indicator Radio Icon */}
-        <div className="mt-1 shrink-0">
-          {isSelected ? (
-            <CheckCircle2 className="h-5 w-5 text-mz-primary animate-scale-in" />
-          ) : (
-            <div className="h-5 w-5 rounded-full border border-white/20 bg-transparent" />
+      {/* Selected glow line at top */}
+      {isSelected && (
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-mz-primary/80 to-transparent" />
+      )}
+
+      <div className="flex items-center gap-4 p-4">
+        {/* Radio Indicator */}
+        <div className={`
+          flex-shrink-0 h-4.5 w-4.5 rounded-full border-2 flex items-center justify-center transition-all duration-200
+          ${isSelected ? 'border-mz-primary' : 'border-white/20 group-hover:border-white/40'}
+        `}>
+          {isSelected && (
+            <div className="h-2 w-2 rounded-full bg-mz-primary animate-scale-in" />
           )}
         </div>
 
-        {/* Quality Info */}
-        <div className="space-y-1.5">
+        {/* Quality Badge + Label */}
+        <div className="flex-1 min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-base font-bold text-white tracking-wide">
+            {/* Resolution badge */}
+            <span className={`
+              inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-black
+              tracking-wide ring-1 ${qColor.bg} ${qColor.text} ${qColor.ring}
+            `}>
               {stream.quality}
             </span>
-            
-            {/* Codec Tag */}
-            <span className="inline-flex items-center gap-1 rounded bg-white/5 border border-white/8 px-1.5 py-0.5 text-3xs font-extrabold uppercase tracking-wider text-white/70">
-              <Cpu className="h-2.5 w-2.5" />
+
+            {/* Codec tag */}
+            <span className="inline-flex items-center rounded-md bg-white/[0.06] border border-white/8 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/50">
               {stream.codec}
             </span>
+
+            {/* Language if present */}
+            {stream.language && (
+              <span className="inline-flex items-center rounded-md bg-white/[0.04] border border-white/6 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/40">
+                {stream.language}
+              </span>
+            )}
           </div>
 
-          <p className="text-xs text-mz-secondary font-medium leading-relaxed max-w-sm">
-            Optimized direct video link. Starts stream immediately on client.
-          </p>
-
+          {/* Wi-Fi warning */}
           {isLarge && (
-            <div className="flex items-center gap-1.5 text-yellow-500/90 text-3xs font-bold uppercase tracking-wider animate-in fade-in duration-300">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>Warning: File exceeds 2.0 GB. Wi-Fi recommended.</span>
+            <div className="flex items-center gap-1.5 text-amber-400/90 text-[10px] font-bold uppercase tracking-wider">
+              <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+              <span>Large file — Wi-Fi recommended</span>
             </div>
           )}
         </div>
-      </div>
 
-      {/* File Size and Info */}
-      <div className="flex sm:flex-col items-center sm:items-end justify-between border-t border-white/5 pt-3.5 sm:border-0 sm:pt-0 gap-2">
-        <span className="text-2xs font-extrabold text-mz-secondary uppercase tracking-widest sm:hidden">
-          Estimated Size
-        </span>
-        <div className="flex items-center gap-1.5 text-base font-extrabold text-white">
-          <HardDrive className="h-4.5 w-4.5 text-mz-primary" />
-          <span>{stream.size}</span>
+        {/* File Size */}
+        <div className="flex-shrink-0 text-right">
+          <div className={`text-base font-black tabular-nums ${isSelected ? 'text-white' : 'text-white/70 group-hover:text-white'} transition-colors`}>
+            {stream.size}
+          </div>
+          <div className="text-[9px] uppercase tracking-widest text-white/30 font-bold mt-0.5">
+            size
+          </div>
         </div>
       </div>
     </button>

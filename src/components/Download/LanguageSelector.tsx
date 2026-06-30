@@ -6,6 +6,7 @@ interface LanguageSelectorProps {
   onChange: (lang: string) => void
 }
 
+
 export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
   languages,
   selectedLanguage,
@@ -14,11 +15,15 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
   if (languages.length === 0) return null
 
   return (
-    <div className="space-y-3">
-      <span className="block text-xs font-extrabold uppercase tracking-widest text-mz-secondary">
-        Audio Language
-      </span>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-2">
+        <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-white/40">
+          Audio Language
+        </span>
+        <div className="flex-1 h-px bg-white/5" />
+      </div>
+
+      <div className="flex flex-wrap gap-2">
         {languages.map((lang) => {
           const isSelected = selectedLanguage === lang
           return (
@@ -26,31 +31,24 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
               key={lang}
               type="button"
               onClick={() => onChange(lang)}
-              aria-checked={isSelected}
-              role="radio"
+              aria-pressed={isSelected}
               className={`
-                flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold
-                border transition-all duration-300 outline-none select-none cursor-pointer
+                relative group flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold
+                border transition-all duration-200 outline-none select-none cursor-pointer
                 ${isSelected
-                  ? 'bg-mz-primary/10 border-mz-primary text-mz-primary ring-1 ring-mz-primary/25'
-                  : 'bg-mz-card border-white/5 text-mz-secondary hover:bg-white/[0.04] hover:text-white focus-visible:border-white/20'
+                  ? 'bg-mz-primary border-mz-primary text-white shadow-[0_0_20px_rgba(229,9,20,0.25)]'
+                  : 'bg-white/[0.03] border-white/8 text-white/60 hover:bg-white/[0.07] hover:border-white/15 hover:text-white'
                 }
               `}
             >
-              <span>{lang}</span>
-              <div
+              {/* Animated left indicator */}
+              <span
                 className={`
-                  h-4 w-4 rounded-full border flex items-center justify-center transition-all duration-300
-                  ${isSelected
-                    ? 'border-mz-primary bg-mz-primary'
-                    : 'border-white/20 bg-transparent'
-                  }
+                  h-2 w-2 rounded-full flex-shrink-0 transition-all duration-200
+                  ${isSelected ? 'bg-white scale-110' : 'bg-white/20 group-hover:bg-white/40'}
                 `}
-              >
-                {isSelected && (
-                  <div className="h-1.5 w-1.5 rounded-full bg-white animate-scale-in" />
-                )}
-              </div>
+              />
+              <span className="leading-none">{lang}</span>
             </button>
           )
         })}

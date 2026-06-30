@@ -183,6 +183,18 @@ export const useDownloadStore = create<DownloadState>()(
               console.debug('[Download] URL =>', fetchUrl)
             }
 
+            if (fetchUrl.toLowerCase().startsWith('magnet:')) {
+              // Direct anchor click for magnet URL without proxy to trigger torrent client
+              const anchor = document.createElement('a')
+              anchor.href = fetchUrl
+              anchor.style.display = 'none'
+              document.body.appendChild(anchor)
+              anchor.click()
+              anchor.remove()
+              onProgress(100)
+              return
+            }
+
             if (params.isOffline) {
               const blob = await fetchVideoBlobForDownload(fetchUrl, {
                 signal: controller.signal,

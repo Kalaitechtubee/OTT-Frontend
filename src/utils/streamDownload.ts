@@ -106,6 +106,10 @@ export function toDownloadFetchUrl(
   streamUrl: string,
   ctx?: DownloadRefererContext,
 ): string {
+  if (streamUrl.trim().toLowerCase().startsWith('magnet:')) {
+    return streamUrl.trim()
+  }
+
   if (isBackendProxyUrl(streamUrl)) {
     return streamUrl
   }

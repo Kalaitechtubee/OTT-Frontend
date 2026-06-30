@@ -177,7 +177,7 @@ export function DetailPage() {
 
   const [feedback, setFeedback] = useState<string | null>(null)
   const [trailerKey, setTrailerKey] = useState<string | null>(null)
-  const [isOffline, setIsOffline] = useState(false)
+  const isOffline = false
 
   const [selectedSeason, setSelectedSeason] = useState<number>(1)
   const [episodes, setEpisodes] = useState<any[]>([])
@@ -376,7 +376,7 @@ export function DetailPage() {
     if (!details || !dl.selectedLanguage || !dl.selectedQuality) return
 
     const activeStream = dl.parsedStreams.find(
-      (s) => s.language === dl.selectedLanguage && s.quality === dl.selectedQuality
+      (s) => s.language === dl.selectedLanguage && s.originalQuality === dl.selectedQuality
     )
     if (!activeStream) return
 
@@ -1035,8 +1035,6 @@ export function DetailPage() {
         onSelectQuality={dl.selectQuality}
         onDownload={handleDownloadSubmit}
         onRetry={dl.retry}
-        isOffline={isOffline}
-        onToggleOffline={setIsOffline}
       />
 
       {/* Floating success toast */}

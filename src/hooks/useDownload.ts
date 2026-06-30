@@ -109,6 +109,7 @@ export function useDownload() {
     variant?: string
   } | null>(null)
   const [moviesdaStreams, setMoviesdaStreams] = useState<ParsedStream[]>([])
+  const [movieswoodStreams, setMovieswoodStreams] = useState<ParsedStream[]>([])
 
   const loadProviderStreams = useCallback(async (
     provider: string,
@@ -162,7 +163,7 @@ export function useDownload() {
         
         const langStreams = mapped.filter(s => s.language === defaultLang)
         if (langStreams.length > 0) {
-          setSelectedQuality(langStreams[0].quality)
+          setSelectedQuality(langStreams[0].originalQuality)
         }
       }
     } catch (err) {
@@ -194,44 +195,118 @@ export function useDownload() {
     setMetadata(meta)
     setCurrentParams({ tmdbId, type, season, episode, variant })
     setMoviesdaStreams([])
+    setMovieswoodStreams([])
 
-    // Fetch Moviesda scraper downloads in parallel for movies
+    // Fetch scraper downloads in parallel for movies
     let moviesdaList: ParsedStream[] = []
+    let movieswoodList: ParsedStream[] = []
+
     if (type === 'movie') {
       try {
         const queryTitle = meta.title.split(' (')[0].trim()
         const queryYear = meta.year ? meta.year.split('-')[0].trim() : ''
-        const url = buildApiUrl('/api/moviesda/download', {
-          title: queryTitle,
-          ...(queryYear && { year: queryYear })
-        })
-        const mRes = await fetch(url).then(res => res.json())
-        if (mRes.ok && mRes.found && mRes.qualities) {
-          for (const q of mRes.qualities) {
-            for (const f of q.files) {
-              if (f.downloadUrl) {
-                const rawQuality = q.label || q.quality || '720p'
-                const cleanQ = rawQuality.replace(/hd|original|rip/gi, '').trim() || '720p'
-                moviesdaList.push({
-                  language: 'Tamil (Local)',
-                  quality: cleanQ,
-                  url: f.downloadUrl,
-                  size: f.size || '980 MB',
-                  codec: f.format ? f.format.toUpperCase() : 'MP4',
-                  originalQuality: `${rawQuality} - ${f.name}`
-                })
+
+        const fetchMoviesda = async () => {
+          try {
+            const url = buildApiUrl('/api/moviesda/download', {
+              title: queryTitle,
+              ...(queryYear && { year: queryYear })
+            })
+            const mRes = await fetch(url).then(res => res.json())
+            if (mRes.ok && mRes.found && mRes.qualities) {
+              for (const q of mRes.qualities) {
+                for (const f of q.files) {
+                  const targetUrl = f.downloadUrl || f.watchUrl
+                  if (targetUrl) {
+                    const resMatch = f.name.match(/(\d{3,4}p)/i)
+                    const fileResolution = resMatch ? resMatch[1].toUpperCase() : null
+                    const rawQuality = fileResolution || f.quality || q.label || q.quality || '720p'
+                    const cleanQ = rawQuality.replace(/hd|original|rip/gi, '').trim() || '720p'
+                    moviesdaList.push({
+                      language: 'Tamil (Local)',
+                      quality: cleanQ,
+                      url: targetUrl,
+                      size: f.size || '980 MB',
+                      codec: f.format ? f.format.toUpperCase() : 'MP4',
+                      originalQuality: `${rawQuality} - ${f.name}`
+                    })
+                  }
+                }
               }
             }
+          } catch (e) {
+            console.error('[Moviesda Scraper] Failed to fetch:', e)
           }
         }
+
+        const fetchMovieswood = async () => {
+          try {
+            const url = buildApiUrl('/api/movieswood/download', {
+              title: queryTitle,
+              ...(queryYear && { year: queryYear })
+            })
+            const mRes = await fetch(url).then(res => res.json())
+            if (mRes.ok && mRes.found && mRes.qualities) {
+              for (const q of mRes.qualities) {
+                for (const f of q.files) {
+                  const targetUrl = f.watchUrl || f.downloadUrl
+                  if (targetUrl) {
+                    const resMatch = f.name.match(/(\d{3,4}p)/i)
+                    const fileResolution = resMatch ? resMatch[1].toUpperCase() : null
+                    const rawQuality = fileResolution || f.quality || q.label || q.quality || '720p'
+                    const cleanQ = rawQuality.replace(/hd|original|rip/gi, '').trim() || '720p'
+                    
+                    // Dynamically parse audio language from file name
+                    let fileLang = 'Local'
+                    const lowerName = f.name.toLowerCase()
+                    if (lowerName.includes('tamil')) {
+                      fileLang = 'Tamil'
+                    } else if (lowerName.includes('telugu')) {
+                      fileLang = 'Telugu'
+                    } else if (lowerName.includes('hindi')) {
+                      fileLang = 'Hindi'
+                    } else if (lowerName.includes('kannada')) {
+                      fileLang = 'Kannada'
+                    } else if (lowerName.includes('malayalam')) {
+                      fileLang = 'Malayalam'
+                    } else if (lowerName.includes('english') || lowerName.includes('eng')) {
+                      fileLang = 'English'
+                    }
+
+                    movieswoodList.push({
+                      language: fileLang,
+                      quality: cleanQ,
+                      url: targetUrl,
+                      size: f.size || '1.40 GB',
+                      codec: f.format ? f.format.toUpperCase() : 'MKV',
+                      originalQuality: `${rawQuality} - ${f.name}`
+                    })
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.error('[Movieswood Scraper] Failed to fetch:', e)
+          }
+        }
+
+        await Promise.all([fetchMoviesda(), fetchMovieswood()])
       } catch (e) {
-        console.error('[Moviesda Scraper] Failed to fetch:', e)
+        console.error('[Scraper parallel fetch] failed:', e)
       }
     }
 
     setMoviesdaStreams(moviesdaList)
+    setMovieswoodStreams(movieswoodList)
 
     const updatedSources = []
+    if (movieswoodList.length > 0) {
+      updatedSources.push({
+        provider: 'movieswood',
+        id: tmdbId,
+        label: 'Movieswood Scraper 🪵'
+      })
+    }
     if (moviesdaList.length > 0) {
       updatedSources.push({
         provider: 'moviesda',
@@ -242,19 +317,30 @@ export function useDownload() {
     setAvailableProviders(updatedSources)
 
     try {
-      if (moviesdaList.length > 0) {
-        setDownloadProvider('moviesda')
-        setActiveProvider('moviesda')
-        setDownloadType('scraper')
-        setParsedStreams(moviesdaList)
+      let defaultProvider = null
+      let defaultStreams: ParsedStream[] = []
 
-        const uniqueLangs = Array.from(new Set(moviesdaList.map(s => s.language)))
+      if (movieswoodList.length > 0) {
+        defaultProvider = 'movieswood'
+        defaultStreams = movieswoodList
+      } else if (moviesdaList.length > 0) {
+        defaultProvider = 'moviesda'
+        defaultStreams = moviesdaList
+      }
+
+      if (defaultProvider) {
+        setDownloadProvider(defaultProvider)
+        setActiveProvider(defaultProvider)
+        setDownloadType('scraper')
+        setParsedStreams(defaultStreams)
+
+        const uniqueLangs = Array.from(new Set(defaultStreams.map(s => s.language)))
         setLanguages(uniqueLangs)
         if (uniqueLangs.length > 0) {
           setSelectedLanguage(uniqueLangs[0])
-          const langStreams = moviesdaList.filter(s => s.language === uniqueLangs[0])
+          const langStreams = defaultStreams.filter(s => s.language === uniqueLangs[0])
           if (langStreams.length > 0) {
-            setSelectedQuality(langStreams[0].quality)
+            setSelectedQuality(langStreams[0].originalQuality)
           }
         }
       } else {
@@ -282,6 +368,7 @@ export function useDownload() {
     setAvailableProviders([])
     setActiveProvider(null)
     setMoviesdaStreams([])
+    setMovieswoodStreams([])
   }, [])
  
   const retry = useCallback(() => {
@@ -304,18 +391,19 @@ export function useDownload() {
     if (!targetSource) return
 
     setActiveProvider(providerName)
-    if (providerName === 'moviesda') {
-      setDownloadProvider('moviesda')
+    if (providerName === 'moviesda' || providerName === 'movieswood') {
+      const targetStreams = providerName === 'moviesda' ? moviesdaStreams : movieswoodStreams
+      setDownloadProvider(providerName)
       setDownloadType('scraper')
-      setParsedStreams(moviesdaStreams)
+      setParsedStreams(targetStreams)
 
-      const uniqueLangs = Array.from(new Set(moviesdaStreams.map(s => s.language)))
+      const uniqueLangs = Array.from(new Set(targetStreams.map(s => s.language)))
       setLanguages(uniqueLangs)
       if (uniqueLangs.length > 0) {
         setSelectedLanguage(uniqueLangs[0])
-        const langStreams = moviesdaStreams.filter(s => s.language === uniqueLangs[0])
+        const langStreams = targetStreams.filter(s => s.language === uniqueLangs[0])
         if (langStreams.length > 0) {
-          setSelectedQuality(langStreams[0].quality)
+          setSelectedQuality(langStreams[0].originalQuality)
         }
       }
     } else {
@@ -327,14 +415,14 @@ export function useDownload() {
         currentParams.variant
       )
     }
-  }, [availableProviders, currentParams, loadProviderStreams, moviesdaStreams])
+  }, [availableProviders, currentParams, loadProviderStreams, moviesdaStreams, movieswoodStreams])
  
   const selectLanguage = useCallback((lang: string) => {
     setSelectedLanguage(lang)
     // Reset quality to first available in this language
     const langStreams = parsedStreams.filter(s => s.language === lang)
     if (langStreams.length > 0) {
-      setSelectedQuality(langStreams[0].quality)
+      setSelectedQuality(langStreams[0].originalQuality)
     } else {
       setSelectedQuality('')
     }
@@ -346,7 +434,7 @@ export function useDownload() {
  
   const triggerDownload = useCallback(() => {
     const activeStream = parsedStreams.find(
-      s => s.language === selectedLanguage && s.quality === selectedQuality
+      s => s.language === selectedLanguage && s.originalQuality === selectedQuality
     )
     if (!activeStream) return
  
